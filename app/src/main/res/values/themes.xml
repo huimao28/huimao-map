@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主 Activity 使用 Material3 主题 -->
+    <style name="Theme.BaiduNaviAuto" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- 百度导航控件固定继承亮色前景，避免系统深色/厂商强制深色把面板染黑。 -->
+    <style name="Theme.BaiduNaviAuto.NaviActivity" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:colorAccent">#2196F3</item>
+        <item name="android:textColorPrimary">#FF111111</item>
+        <item name="android:textColorSecondary">#FF555555</item>
+    </style>
+</resources>

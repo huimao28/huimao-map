@@ -1,0 +1,18 @@
+# Gradle / Android
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+
+# Signing secrets
+keystore/
+*.jks
+*.keystore
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Large generated delivery files
+*.apk

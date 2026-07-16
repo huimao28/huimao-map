@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主 Activity 使用 Material3 暗色主题 -->
+    <style name="Theme.BaiduNaviAuto" parent="android:Theme.Material.NoActionBar" />
+
+    <!-- 百度导航 SDK 的顶部/底部面板会继承宿主主题文字色。
+         深色 AppCompat 会造成深色背景上仍使用深色文字，因此导航 Activity 固定亮色主题；
+         地图自身的日夜配色仍由百度导航 SDK 控制。 -->
+    <style name="Theme.BaiduNaviAuto.NaviActivity" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:colorAccent">#2196F3</item>
+        <item name="android:textColorPrimary">#FF111111</item>
+        <item name="android:textColorSecondary">#FF555555</item>
+    </style>
+</resources>
