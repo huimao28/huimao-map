@@ -122,7 +122,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         val state = CarNavigationBridge.state
         if (!state.navigating) {
             return MessageTemplate.Builder("请在手机端选择目的地并开始导航")
-                .setTitle("百度导航 Auto")
+                .setTitle("灰猫地图")
                 .setHeaderAction(Action.APP_ICON)
                 .build()
         }
@@ -260,7 +260,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         val left = 24f
         val top = 24f
         val width = (surfaceWidth * 0.56f).coerceAtMost(680f)
-        val height = 150f
+        val height = 184f
         val background = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(225, 20, 34, 51) }
         canvas.drawRoundRect(left, top, left + width, top + height, 24f, 24f, background)
 
@@ -307,9 +307,17 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE; textSize = 40f; typeface = android.graphics.Typeface.DEFAULT_BOLD
             canvas.drawText(distance, left + 145f, top + 58f, this)
-            textSize = 28f; typeface = android.graphics.Typeface.DEFAULT
+            textSize = 27f; typeface = android.graphics.Typeface.DEFAULT
+            // 指引文字完全来自百度 GuidePanelMessage；仅做两行排版，不改写内容。
             val cue = state.instruction.ifBlank { state.roadName.ifBlank { "继续行驶" } }
-            canvas.drawText(cue.take(24), left + 145f, top + 112f, this)
+            val lineLength = 19
+            val firstLine = cue.take(lineLength)
+            val secondLine = cue.drop(lineLength).take(lineLength)
+            canvas.drawText(firstLine, left + 145f, top + 112f, this)
+            if (secondLine.isNotBlank()) {
+                textSize = 24f
+                canvas.drawText(secondLine, left + 145f, top + 151f, this)
+            }
         }
     }
 

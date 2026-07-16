@@ -34,5 +34,15 @@ baidunaviauto://navigate?lat=...&lng=...&name=...
 ## 版本
 
 ```text
-1.0.0
+1.0.1
 ```
+
+## Android Auto 混合导航架构
+
+- 底图：独立道路瓦片渲染，不嵌入百度 MapView
+- 路线：百度规划路线坐标
+- 位置：百度 BD09LL 定位
+- 方向与速度：百度导航回调
+- 转向距离与文字：百度 `BNaviInfo + GuidePanelMessage`
+- 剩余距离与时间：百度 `onRemainInfoUpdate`
+- 车机界面：Android Auto `NavigationTemplate`
