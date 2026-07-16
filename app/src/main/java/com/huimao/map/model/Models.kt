@@ -1,4 +1,4 @@
-package com.graycat.map.model
+package com.huimao.map.model
 
 data class LatLng(val latitude: Double, val longitude: Double)
 

@@ -1,12 +1,12 @@
-package com.graycat.map.ui.screens
+package com.huimao.map.ui.screens
 
 import android.app.Application
 import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.graycat.map.data.AppSettingsKeys
-import com.graycat.map.data.dataStore
-import com.graycat.map.map.BaiduMapManager
+import com.huimao.map.data.AppSettingsKeys
+import com.huimao.map.data.dataStore
+import com.huimao.map.map.BaiduMapManager
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn

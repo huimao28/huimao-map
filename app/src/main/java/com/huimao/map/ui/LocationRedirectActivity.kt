@@ -1,4 +1,4 @@
-package com.graycat.map.ui
+package com.huimao.map.ui
 
 import android.app.Activity
 import android.content.Intent

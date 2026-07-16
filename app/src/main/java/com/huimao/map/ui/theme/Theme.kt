@@ -1,4 +1,4 @@
-package com.graycat.map.ui.theme
+package com.huimao.map.ui.theme
 
 import android.app.Activity
 import android.os.Build

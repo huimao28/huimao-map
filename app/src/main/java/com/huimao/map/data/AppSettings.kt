@@ -1,4 +1,4 @@
-package com.graycat.map.data
+package com.huimao.map.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore

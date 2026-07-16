@@ -1,4 +1,4 @@
-package com.graycat.map.map
+package com.huimao.map.map
 
 import android.util.Log
 import androidx.compose.runtime.*
@@ -17,9 +17,9 @@ import com.baidu.mapapi.map.MyLocationData
 import com.baidu.mapapi.map.PolylineOptions
 import com.baidu.mapapi.model.LatLngBounds
 import com.baidu.mapapi.model.LatLng as BaiduLatLng
-import com.graycat.map.model.LatLng
-import com.graycat.map.model.Place
-import com.graycat.map.model.RouteResult
+import com.huimao.map.model.LatLng
+import com.huimao.map.model.Place
+import com.huimao.map.model.RouteResult
 
 private const val TAG = "BaiduMapView"
 

@@ -1,4 +1,4 @@
-package com.graycat.map.map
+package com.huimao.map.map
 
 import android.content.Context
 import android.util.Log
@@ -25,13 +25,13 @@ import com.baidu.mapapi.search.route.PlanNode
 import com.baidu.mapapi.search.route.RoutePlanSearch
 import com.baidu.mapapi.search.route.TransitRouteResult
 import com.baidu.mapapi.search.route.WalkingRouteResult
-import com.graycat.map.model.LatLng
-import com.graycat.map.model.ManeuverType
-import com.graycat.map.model.Place
-import com.graycat.map.model.RouteResult
-import com.graycat.map.model.RouteStep
-import com.graycat.map.model.RouteType
-import com.graycat.map.model.TrafficCondition
+import com.huimao.map.model.LatLng
+import com.huimao.map.model.ManeuverType
+import com.huimao.map.model.Place
+import com.huimao.map.model.RouteResult
+import com.huimao.map.model.RouteStep
+import com.huimao.map.model.RouteType
+import com.huimao.map.model.TrafficCondition
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 

@@ -1,4 +1,4 @@
-package com.graycat.map.navigation
+package com.huimao.map.navigation
 
 import android.content.Intent
 import android.graphics.BitmapFactory

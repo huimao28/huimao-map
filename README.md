@@ -14,7 +14,7 @@
 
 1. 使用 Android Studio 或 Gradle，JDK 17。
 2. 在应用设置中配置百度地图 Android AK。
-3. 百度 AK 的包名需包含 `com.graycat.map`，SHA-1 需与实际签名证书一致。
+3. 百度 AK 的包名需包含 `com.huimao.map`，SHA-1 需与实际签名证书一致。
 4. 本项目依赖的百度本地 AAR/so 文件体积较大；请确认你有权使用并分发相关 SDK。
 
 ```bash

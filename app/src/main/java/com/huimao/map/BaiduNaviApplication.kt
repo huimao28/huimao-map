@@ -1,12 +1,12 @@
-package com.graycat.map
+package com.huimao.map
 
 import android.app.Application
 import android.util.Log
 import com.baidu.location.LocationClient
 import com.baidu.mapapi.SDKInitializer
-import com.graycat.map.data.AppSettingsKeys
-import com.graycat.map.data.dataStore
-import com.graycat.map.map.BaiduMapManager
+import com.huimao.map.data.AppSettingsKeys
+import com.huimao.map.data.dataStore
+import com.huimao.map.map.BaiduMapManager
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking

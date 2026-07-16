@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.graycat.map"
+    namespace = "com.huimao.map"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.graycat.map"
+        applicationId = "com.huimao.map"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

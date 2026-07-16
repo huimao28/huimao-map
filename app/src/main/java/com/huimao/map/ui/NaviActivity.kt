@@ -1,4 +1,4 @@
-package com.graycat.map.ui
+package com.huimao.map.ui
 
 import android.Manifest
 import android.app.Activity
@@ -29,9 +29,9 @@ import com.baidu.navisdk.adapter.IBaiduNaviManager
 import com.baidu.navisdk.adapter.struct.BNGuideConfig
 import com.baidu.navisdk.adapter.struct.BNLocationData
 import com.baidu.navisdk.adapter.struct.BNaviInitConfig
-import com.graycat.map.data.AppSettingsKeys
-import com.graycat.map.data.dataStore
-import com.graycat.map.navigation.CarNavigationBridge
+import com.huimao.map.data.AppSettingsKeys
+import com.huimao.map.data.dataStore
+import com.huimao.map.navigation.CarNavigationBridge
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking

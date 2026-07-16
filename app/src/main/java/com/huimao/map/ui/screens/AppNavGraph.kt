@@ -1,4 +1,4 @@
-package com.graycat.map.ui.screens
+package com.huimao.map.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -33,10 +33,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.ui.platform.LocalConfiguration
-import com.graycat.map.map.BaiduMapManager
-import com.graycat.map.map.BaiduMapView
-import com.graycat.map.map.MapLayerType
-import com.graycat.map.model.*
+import com.huimao.map.map.BaiduMapManager
+import com.huimao.map.map.BaiduMapView
+import com.huimao.map.map.MapLayerType
+import com.huimao.map.model.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -766,7 +766,7 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
         delay(250)
         val d = dest
         if (d != null && d.latLng.latitude != 0.0 && d.latLng.longitude != 0.0) {
-            com.graycat.map.ui.NaviActivity.start(
+            com.huimao.map.ui.NaviActivity.start(
                 context, d.latLng.latitude, d.latLng.longitude, d.name,
                 currentLocation?.latitude ?: 0.0, currentLocation?.longitude ?: 0.0
             )
@@ -856,7 +856,7 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
                                             val pair = end.latitude to end.longitude
                                             if (sampled.lastOrNull() != pair) sampled.add(pair)
                                         }
-                                        com.graycat.map.navigation.CarNavigationBridge.setRoutePoints(sampled)
+                                        com.huimao.map.navigation.CarNavigationBridge.setRoutePoints(sampled)
                                         showPlanningMap = false
                                         pendingNaviLaunch = true
                                     } else {
@@ -1089,7 +1089,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                                 )
                             }
                             Text(
-                                "包名：com.graycat.map",
+                                "包名：com.huimao.map",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
@@ -1111,7 +1111,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         if (apiKeyInput.isNotBlank()) {
                             settingsVm.saveBaiduApiKey(apiKeyInput)
                             // 保存后立即触发 SDK 初始化，无需等待协程 collect
-                            com.graycat.map.map.BaiduMapManager.initialize(
+                            com.huimao.map.map.BaiduMapManager.initialize(
                                 ctx.applicationContext, apiKeyInput.trim()
                             )
                         }
@@ -1208,13 +1208,13 @@ fun SettingsScreen(onBack: () -> Unit) {
             item {
                 Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
                     Column {
-                        ListItem(headlineContent = { Text("版本") }, supportingContent = { Text("${com.graycat.map.BuildConfig.VERSION_NAME} (${com.graycat.map.BuildConfig.VERSION_CODE})") }, leadingContent = { Icon(Icons.Default.Info, null) })
+                        ListItem(headlineContent = { Text("版本") }, supportingContent = { Text("${com.huimao.map.BuildConfig.VERSION_NAME} (${com.huimao.map.BuildConfig.VERSION_CODE})") }, leadingContent = { Icon(Icons.Default.Info, null) })
                         HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                         ListItem(headlineContent = { Text("百度地图 SDK") }, supportingContent = { Text("地图 v7.6.4.1 · 定位 v9.6.4") }, leadingContent = { Icon(Icons.Default.Map, null) })
                         HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                         ListItem(
                             headlineContent = { Text("包名") },
-                            supportingContent = { Text(com.graycat.map.BuildConfig.APPLICATION_ID, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) },
+                            supportingContent = { Text(com.huimao.map.BuildConfig.APPLICATION_ID, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) },
                             leadingContent = { Icon(Icons.Default.Android, null) }
                         )
                         HorizontalDivider(Modifier.padding(horizontal = 16.dp))

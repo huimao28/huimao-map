@@ -1,4 +1,4 @@
-package com.graycat.map.map
+package com.huimao.map.map
 
 enum class MapLayerType {
     NORMAL,    // 普通地图

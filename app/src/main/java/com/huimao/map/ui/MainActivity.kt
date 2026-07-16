@@ -1,4 +1,4 @@
-package com.graycat.map.ui
+package com.huimao.map.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -16,13 +16,13 @@ import com.baidu.location.BDAbstractLocationListener
 import com.baidu.location.BDLocation
 import com.baidu.location.LocationClient
 import com.baidu.location.LocationClientOption
-import com.graycat.map.data.AppSettingsKeys
-import com.graycat.map.data.dataStore
-import com.graycat.map.map.BaiduMapManager
-import com.graycat.map.model.LatLng
-import com.graycat.map.ui.screens.AppNavGraph
-import com.graycat.map.ui.screens.NavViewModel
-import com.graycat.map.ui.theme.BaiduNaviTheme
+import com.huimao.map.data.AppSettingsKeys
+import com.huimao.map.data.dataStore
+import com.huimao.map.map.BaiduMapManager
+import com.huimao.map.model.LatLng
+import com.huimao.map.ui.screens.AppNavGraph
+import com.huimao.map.ui.screens.NavViewModel
+import com.huimao.map.ui.theme.BaiduNaviTheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
