@@ -45,6 +45,9 @@ class NaviActivity : Activity() {
     private var engineInitStarted = false
     private var closingNavi = false
     private var routePlanAttempt = 0
+    private var naviEngineReady = false
+    private var routePlanStarted = false
+    private var locationWaitStartedAt = 0L
     private var locationClient: LocationClient? = null
     private var locationListener: BDAbstractLocationListener? = null
     private var systemTts: TextToSpeech? = null
@@ -238,6 +241,12 @@ class NaviActivity : Activity() {
                 override fun onReceiveLocation(loc: BDLocation?) {
                     if (loc == null || loc.latitude == 0.0 || loc.longitude == 0.0) return
                     pushLocationToNaviEngine(loc)
+                    // 微信位置只提供终点；首帧定位到达且导航引擎已就绪后再开始算路。
+                    if (naviEngineReady && !routePlanStarted && startLat == 0.0 && startLng == 0.0) {
+                        startLat = loc.latitude
+                        startLng = loc.longitude
+                        runOnUiThread { startRoutePlanWhenLocationReady() }
+                    }
                 }
             }
             locationListener = listener
@@ -308,7 +317,8 @@ class NaviActivity : Activity() {
                             radius = 10f; locType = BDLocation.TypeNetWorkLocation
                         })
                     }
-                    startRoutePlan()
+                    naviEngineReady = true
+                    startRoutePlanWhenLocationReady()
                 }
                 override fun initFailed(errCode: Int) = runOnUiThread {
                     showError("❌ 导航引擎初始化失败 errCode=$errCode")
@@ -322,6 +332,45 @@ class NaviActivity : Activity() {
 
     // RouteResultManager 不在这里提前初始化；routePlan 适配层会在算路完成后
     // 自行切换到 TO_NAVI，提前 startNavi 会复用上一条诱导路线。
+
+    private fun startRoutePlanWhenLocationReady() {
+        if (routePlanStarted || closingNavi) return
+        val loc = if (startLat != 0.0 && startLng != 0.0) {
+            BDLocation().apply { latitude = startLat; longitude = startLng; radius = 10f }
+        } else locationClient?.lastKnownLocation?.takeIf {
+            it.latitude != 0.0 && it.longitude != 0.0
+        }
+        if (loc != null) {
+            startLat = loc.latitude
+            startLng = loc.longitude
+            pushLocationToNaviEngine(loc)
+            routePlanStarted = true
+            startRoutePlan()
+            return
+        }
+        if (locationWaitStartedAt == 0L) {
+            locationWaitStartedAt = System.currentTimeMillis()
+            showWaitingForLocation()
+        }
+        if (System.currentTimeMillis() - locationWaitStartedAt >= 15_000L) {
+            showError("❌ 15 秒内未获取到当前位置\n请确认已开启定位和精确位置权限后重试")
+            return
+        }
+        Handler(Looper.getMainLooper()).postDelayed({ startRoutePlanWhenLocationReady() }, 500L)
+    }
+
+    private fun showWaitingForLocation() {
+        runOnUiThread {
+            setContentView(TextView(this).apply {
+                setTextColor(0xFF222222.toInt())
+                setBackgroundColor(0xFFFFFFFF.toInt())
+                textSize = 18f
+                gravity = android.view.Gravity.CENTER
+                setPadding(48, 48, 48, 48)
+                text = "正在获取当前位置…\n\n微信位置已接收，定位完成后将自动规划路线"
+            })
+        }
+    }
 
     private fun startRoutePlan() {
         if (destLat == 0.0 || destLng == 0.0) { showError("❌ 终点坐标无效"); return }
