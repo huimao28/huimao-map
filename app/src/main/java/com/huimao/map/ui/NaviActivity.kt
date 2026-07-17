@@ -5,11 +5,15 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
@@ -30,7 +34,9 @@ import com.baidu.navisdk.adapter.IBNaviViewListener
 import com.baidu.navisdk.adapter.IBaiduNaviManager
 import com.baidu.navisdk.adapter.struct.BNGuideConfig
 import com.baidu.navisdk.adapter.struct.BNLocationData
+import com.baidu.navisdk.adapter.struct.BNTTsInitConfig
 import com.baidu.navisdk.adapter.struct.BNaviInitConfig
+import com.baidu.navisdk.tts.ITTSInitListener
 import com.huimao.map.data.AppSettingsKeys
 import com.huimao.map.data.dataStore
 import com.huimao.map.navigation.CarNavigationBridge
@@ -54,6 +60,13 @@ class NaviActivity : Activity() {
     private var locationListener: BDAbstractLocationListener? = null
     private var systemTts: TextToSpeech? = null
     private var guideRootView: View? = null
+    private var voiceEnabled = true
+    private var ttsProvider = "system"
+    private var baiduTtsAppId = ""
+    private var baiduTtsApiKey = ""
+    private var baiduTtsSecretKey = ""
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
     @Volatile private var ttsReady = false
 
     private var startLat = 0.0
@@ -172,7 +185,9 @@ class NaviActivity : Activity() {
         destLat = intent.getDoubleExtra(EXTRA_DEST_LAT, 0.0)
         destLng = intent.getDoubleExtra(EXTRA_DEST_LNG, 0.0)
         destName = intent.getStringExtra(EXTRA_DEST_NAME) ?: ""
-        initSystemTts()
+        loadVoiceSettings()
+        audioManager = getSystemService(AudioManager::class.java)
+        if (voiceEnabled && ttsProvider == "system") initSystemTts()
         checkPermissionAndInit()
     }
 
@@ -201,11 +216,96 @@ class NaviActivity : Activity() {
             .first()[AppSettingsKeys.BAIDU_API_KEY] ?: "" }.trim()
     } catch (_: Exception) { "" }
 
+    private fun loadVoiceSettings() {
+        try {
+            val prefs = runBlocking { applicationContext.dataStore.data.first() }
+            voiceEnabled = prefs[AppSettingsKeys.VOICE_ENABLED] ?: true
+            ttsProvider = prefs[AppSettingsKeys.TTS_PROVIDER] ?: "system"
+            baiduTtsAppId = prefs[AppSettingsKeys.BAIDU_TTS_APP_ID].orEmpty().trim()
+            baiduTtsApiKey = prefs[AppSettingsKeys.BAIDU_TTS_API_KEY].orEmpty().trim()
+            baiduTtsSecretKey = prefs[AppSettingsKeys.BAIDU_TTS_SECRET_KEY].orEmpty().trim()
+        } catch (e: Throwable) { Log.w(TAG, "Load voice settings failed", e) }
+    }
+
+    private val ttsStateListener = object : IBNTTSManager.IOnTTSPlayStateChangedListener {
+        override fun onPlayStart() { requestSpeechAudioFocus() }
+        override fun onPlayEnd(speechId: String?) { abandonSpeechAudioFocus() }
+        override fun onPlayError(code: Int, message: String?) {
+            Log.w(TAG, "TTS play error $code: $message")
+            abandonSpeechAudioFocus()
+        }
+    }
+
+    private fun requestSpeechAudioFocus() {
+        val manager = audioManager ?: return
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            .setAudioAttributes(AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+            .setOnAudioFocusChangeListener { }
+            .setWillPauseWhenDucked(false)
+            .build()
+        audioFocusRequest?.let { manager.abandonAudioFocusRequest(it) }
+        audioFocusRequest = request
+        manager.requestAudioFocus(request)
+    }
+
+    private fun abandonSpeechAudioFocus() {
+        val request = audioFocusRequest ?: return
+        audioManager?.abandonAudioFocusRequest(request)
+        audioFocusRequest = null
+    }
+
+    private fun initSelectedTts() {
+        if (!voiceEnabled) return
+        BaiduNaviManagerFactory.getTTSManager().setOnTTSStateChangedListener(ttsStateListener)
+        if (ttsProvider == "baidu") initBaiduTts() else if (ttsReady) registerOuterTts()
+    }
+
+    private fun initBaiduTts() {
+        if (baiduTtsAppId.isBlank() || baiduTtsApiKey.isBlank() || baiduTtsSecretKey.isBlank()) {
+            Log.w(TAG, "Baidu TTS credentials missing; falling back to system TTS")
+            ttsProvider = "system"
+            initSystemTts()
+            return
+        }
+        try {
+            val config = BNTTsInitConfig.Builder()
+                .context(applicationContext)
+                .appId(baiduTtsAppId)
+                .appKey(baiduTtsApiKey)
+                .secretKey(baiduTtsSecretKey)
+                .listener(object : ITTSInitListener {
+                    override fun onSuccess() { Log.i(TAG, "Baidu SDK TTS initialized") }
+                    override fun onFail(code: Int) {
+                        Log.e(TAG, "Baidu SDK TTS init failed: $code; falling back to system TTS")
+                        runOnUiThread { ttsProvider = "system"; initSystemTts() }
+                    }
+                }).build()
+            BaiduNaviManagerFactory.getTTSManager().initTTS(config)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Baidu SDK TTS init exception; falling back to system TTS", e)
+            ttsProvider = "system"
+            initSystemTts()
+        }
+    }
+
     private fun initSystemTts() {
+        if (systemTts != null) return
         systemTts = TextToSpeech(applicationContext) { status ->
             ttsReady = status == TextToSpeech.SUCCESS
             if (ttsReady) {
                 systemTts?.language = Locale.SIMPLIFIED_CHINESE
+                systemTts?.setAudioAttributes(AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                systemTts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) { requestSpeechAudioFocus() }
+                    override fun onDone(utteranceId: String?) { abandonSpeechAudioFocus() }
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) { abandonSpeechAudioFocus() }
+                    override fun onError(utteranceId: String?, errorCode: Int) { abandonSpeechAudioFocus() }
+                })
                 registerOuterTts()
             } else Log.e(TAG, "Android TTS init failed: $status")
         }
@@ -226,8 +326,8 @@ class NaviActivity : Activity() {
                         wakeUp: Boolean,
                         data: com.baidu.navisdk.comapi.tts.c
                     ): Int = 4
-                    override fun stopTTS() { systemTts?.stop() }
-                    override fun pauseTTS() { systemTts?.stop() }
+                    override fun stopTTS() { systemTts?.stop(); abandonSpeechAudioFocus() }
+                    override fun pauseTTS() { systemTts?.stop(); abandonSpeechAudioFocus() }
                     override fun resumeTTS() = Unit
                     override fun initTTSPlayer() = Unit
                     override fun releaseTTSPlayer() = Unit
@@ -316,7 +416,7 @@ class NaviActivity : Activity() {
                             initSensor()
                         }
                     } catch (e: Throwable) { Log.e(TAG, "Navigation GPS start failed", e) }
-                    if (ttsReady) registerOuterTts()
+                    initSelectedTts()
                     // 先把 MainActivity 传来的当前位置送入外部定位通道，再发起算路。
                     // 避免新 LocationClient 首次回调尚未到达时使用 SDK 缓存位置。
                     if (startLat != 0.0 && startLng != 0.0) {
@@ -639,6 +739,8 @@ class NaviActivity : Activity() {
         try { BaiduNaviManagerFactory.getBaiduNaviManager().stopLocationMonitor(); BaiduNaviManagerFactory.getBaiduNaviManager().unInitSensor() } catch (_: Throwable) {}
         try { BaiduNaviManagerFactory.getMapManager().onPause() } catch (_: Throwable) {}
         try { systemTts?.stop(); systemTts?.shutdown() } catch (_: Throwable) {}
+        abandonSpeechAudioFocus()
+        audioManager = null
         super.onDestroy()
     }
 

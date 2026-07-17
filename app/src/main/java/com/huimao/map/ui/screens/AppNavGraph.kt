@@ -1032,11 +1032,19 @@ fun SettingsScreen(onBack: () -> Unit) {
     // 从 DataStore 持久化读取状态
     val savedApiKey by settingsVm.baiduApiKey.collectAsState()
     val voice by settingsVm.voiceEnabled.collectAsState()
+    val ttsProvider by settingsVm.ttsProvider.collectAsState()
+    val baiduTtsAppId by settingsVm.baiduTtsAppId.collectAsState()
+    val baiduTtsApiKey by settingsVm.baiduTtsApiKey.collectAsState()
+    val baiduTtsSecretKey by settingsVm.baiduTtsSecretKey.collectAsState()
     val traffic by settingsVm.trafficEnabled.collectAsState()
     val routeType by settingsVm.routeType.collectAsState()
 
     var showApiKeyDialog by remember { mutableStateOf(false) }
+    var showBaiduTtsDialog by remember { mutableStateOf(false) }
     var apiKeyInput by remember(savedApiKey) { mutableStateOf(savedApiKey) }
+    var ttsAppIdInput by remember(baiduTtsAppId) { mutableStateOf(baiduTtsAppId) }
+    var ttsApiKeyInput by remember(baiduTtsApiKey) { mutableStateOf(baiduTtsApiKey) }
+    var ttsSecretInput by remember(baiduTtsSecretKey) { mutableStateOf(baiduTtsSecretKey) }
 
     // API Key 输入对话框
     if (showApiKeyDialog) {
@@ -1095,7 +1103,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                             )
                             Text(
-                                "SHA1：8C:AC:18:E5:8E:37:AC:E0:92:31:9B:B2:59:EB:51:3A:6E:4D:93:24",
+                                "SHA1：DE:FF:00:C2:E1:8A:20:62:9C:4A:17:67:B7:27:A5:08:CC:1B:F0:E4",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
@@ -1125,6 +1133,34 @@ fun SettingsScreen(onBack: () -> Unit) {
         )
     }
 
+    if (showBaiduTtsDialog) {
+        AlertDialog(
+            onDismissRequest = { showBaiduTtsDialog = false },
+            title = { Text("百度语音配置") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("请填写百度智能云语音合成应用凭据。凭据仅保存在本机。", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(ttsAppIdInput, { ttsAppIdInput = it }, label = { Text("App ID") }, singleLine = true)
+                    OutlinedTextField(ttsApiKeyInput, { ttsApiKeyInput = it }, label = { Text("API Key") }, singleLine = true)
+                    OutlinedTextField(
+                        ttsSecretInput, { ttsSecretInput = it }, label = { Text("Secret Key") },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                    )
+                    Text("未配置或百度语音初始化失败时，将自动回退系统 TTS。", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    settingsVm.saveBaiduTtsCredentials(ttsAppIdInput, ttsApiKeyInput, ttsSecretInput)
+                    settingsVm.saveTtsProvider("baidu")
+                    showBaiduTtsDialog = false
+                }) { Text("保存并使用百度语音") }
+            },
+            dismissButton = { TextButton(onClick = { showBaiduTtsDialog = false }) { Text("取消") } }
+        )
+    }
+
     Scaffold(topBar = {
         TopAppBar(
             title = { Text("设置", fontWeight = FontWeight.SemiBold) },
@@ -1136,7 +1172,39 @@ fun SettingsScreen(onBack: () -> Unit) {
             item {
                 Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
                     Column {
-                        ListItem(headlineContent = { Text("语音播报") }, supportingContent = { Text("开启导航语音提示") }, leadingContent = { Icon(Icons.Default.VolumeUp, null) }, trailingContent = { Switch(voice, { settingsVm.saveVoiceEnabled(it) }) })
+                        ListItem(headlineContent = { Text("语音播报") }, supportingContent = { Text("开启导航语音提示；播报时自动压低音乐") }, leadingContent = { Icon(Icons.Default.VolumeUp, null) }, trailingContent = { Switch(voice, { settingsVm.saveVoiceEnabled(it) }) })
+                        HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                        ListItem(
+                            headlineContent = { Text("语音引擎") },
+                            supportingContent = { Text(if (ttsProvider == "baidu") "百度 SDK TTS" else "Android 系统 TTS") },
+                            leadingContent = { Icon(Icons.Default.RecordVoiceOver, null) },
+                            trailingContent = {
+                                Row {
+                                    FilterChip(
+                                        selected = ttsProvider == "system",
+                                        onClick = { settingsVm.saveTtsProvider("system") },
+                                        label = { Text("系统") }
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    FilterChip(
+                                        selected = ttsProvider == "baidu",
+                                        onClick = {
+                                            if (baiduTtsAppId.isBlank() || baiduTtsApiKey.isBlank() || baiduTtsSecretKey.isBlank()) showBaiduTtsDialog = true
+                                            else settingsVm.saveTtsProvider("baidu")
+                                        },
+                                        label = { Text("百度") }
+                                    )
+                                }
+                            }
+                        )
+                        if (ttsProvider == "baidu") {
+                            ListItem(
+                                headlineContent = { Text("百度语音凭据") },
+                                supportingContent = { Text(if (baiduTtsAppId.isBlank()) "尚未配置" else "App ID：$baiduTtsAppId") },
+                                leadingContent = { Icon(Icons.Default.Key, null) },
+                                trailingContent = { TextButton(onClick = { showBaiduTtsDialog = true }) { Text("配置") } }
+                            )
+                        }
                         HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                         ListItem(headlineContent = { Text("实时路况") }, supportingContent = { Text("在地图上显示实时交通信息") }, leadingContent = { Icon(Icons.Default.Traffic, null) }, trailingContent = { Switch(traffic, { settingsVm.saveTrafficEnabled(it) }) })
                     }

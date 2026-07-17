@@ -24,6 +24,22 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         .map { it[AppSettingsKeys.VOICE_ENABLED] ?: true }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val ttsProvider = ds.data
+        .map { it[AppSettingsKeys.TTS_PROVIDER] ?: "system" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "system")
+
+    val baiduTtsAppId = ds.data
+        .map { it[AppSettingsKeys.BAIDU_TTS_APP_ID] ?: "" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
+    val baiduTtsApiKey = ds.data
+        .map { it[AppSettingsKeys.BAIDU_TTS_API_KEY] ?: "" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
+    val baiduTtsSecretKey = ds.data
+        .map { it[AppSettingsKeys.BAIDU_TTS_SECRET_KEY] ?: "" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
     val trafficEnabled = ds.data
         .map { it[AppSettingsKeys.TRAFFIC_ENABLED] ?: true }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
@@ -44,6 +60,20 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { ds.edit { it[AppSettingsKeys.VOICE_ENABLED] = enabled } }
     }
     fun saveVoiceEnabled(enabled: Boolean) = setVoiceEnabled(enabled)
+
+    fun saveTtsProvider(provider: String) {
+        viewModelScope.launch { ds.edit { it[AppSettingsKeys.TTS_PROVIDER] = provider } }
+    }
+
+    fun saveBaiduTtsCredentials(appId: String, apiKey: String, secretKey: String) {
+        viewModelScope.launch {
+            ds.edit {
+                it[AppSettingsKeys.BAIDU_TTS_APP_ID] = appId.trim()
+                it[AppSettingsKeys.BAIDU_TTS_API_KEY] = apiKey.trim()
+                it[AppSettingsKeys.BAIDU_TTS_SECRET_KEY] = secretKey.trim()
+            }
+        }
+    }
 
     fun setTrafficEnabled(enabled: Boolean) {
         viewModelScope.launch { ds.edit { it[AppSettingsKeys.TRAFFIC_ENABLED] = enabled } }
