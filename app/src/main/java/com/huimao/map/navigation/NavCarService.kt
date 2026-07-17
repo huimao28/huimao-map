@@ -72,7 +72,8 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     private val tileCache = ConcurrentHashMap<String, android.graphics.Bitmap>()
     private val tileOrder = java.util.concurrent.ConcurrentLinkedQueue<String>()
     private val tilesInFlight = ConcurrentHashMap.newKeySet<String>()
-    private val tileExecutor = Executors.newFixedThreadPool(3)
+    private val tileExecutor = Executors.newFixedThreadPool(4)
+    @Volatile private var tileRenderPending = false
     private val surfaceCallback = object : SurfaceCallback {
         override fun onSurfaceAvailable(container: SurfaceContainer) {
             carSurface = container.surface
@@ -178,7 +179,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         // 按屏幕对角线取正方形，再额外预取 512px 缓冲圈，车辆移动时不露黑边。
         val prefetchRadius = kotlin.math.ceil(
             kotlin.math.hypot(surfaceWidth.toDouble(), surfaceHeight.toDouble()) / 2.0
-        ).toInt() + 512
+        ).toInt() + 768
         requestVisibleTiles(
             centerPx.first - prefetchRadius,
             centerPx.second - prefetchRadius,
@@ -367,8 +368,16 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
                 missing.add(Triple(x, ty, key))
             }
         }
-        // 扩大区域一般约 80~120 张；单轮最多提交 96 张，三线程并行加载。
-        missing.take(96).forEach { (x, y, key) ->
+        val centerTileX = kotlin.math.floor((originX + viewportWidth / 2.0) / 256.0).toInt()
+        val centerTileY = kotlin.math.floor((originY + viewportHeight / 2.0) / 256.0).toInt()
+        // 中心优先：当前可见区域先完成，外围预取随后，避免缓冲瓦片抢占下载队列。
+        missing.sortBy { (x, y, _) ->
+            val dx = kotlin.math.abs(x - ((centerTileX % count + count) % count))
+            val wrappedDx = minOf(dx, count - dx)
+            wrappedDx * wrappedDx + (y - centerTileY) * (y - centerTileY)
+        }
+        // 提交整个预取区域；tilesInFlight 会去重，四线程按中心距离依次加载。
+        missing.forEach { (x, y, key) ->
             runCatching {
                 tileExecutor.execute {
                     try {
@@ -381,7 +390,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
                             BitmapFactory.decodeStream(input)?.let { bitmap ->
                                 tileCache[key] = bitmap
                                 tileOrder.add(key)
-                                while (tileCache.size > 192) {
+                                while (tileCache.size > 320) {
                                     val oldKey = tileOrder.poll() ?: break
                                     // 只移出缓存，不主动 recycle，避免与 Surface 绘制竞态。
                                     tileCache.remove(oldKey)
@@ -391,13 +400,20 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
                         connection.disconnect()
                     } finally {
                         tilesInFlight.remove(key)
-                        runCatching { carContext.mainExecutor.execute { renderMap() } }
+                        scheduleTileRender()
                     }
                 }
             }.onFailure { tilesInFlight.remove(key) }
         }
-        // 未提交的项必须释放占位，下次绘制时可继续排队。
-        missing.drop(96).forEach { tilesInFlight.remove(it.third) }
+    }
+
+    private fun scheduleTileRender() {
+        if (tileRenderPending) return
+        tileRenderPending = true
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            tileRenderPending = false
+            if (carSurface?.isValid == true) renderMap()
+        }, 180L)
     }
 
     /** 百度 BD09LL 转 WGS-84，供标准道路瓦片和路线对齐。 */

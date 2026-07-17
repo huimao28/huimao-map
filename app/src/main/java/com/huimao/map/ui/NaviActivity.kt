@@ -406,8 +406,8 @@ class NaviActivity : Activity() {
     }
 
     private fun syncRouteGeometryToCar() {
-        // 没有 Android Auto Host 时不复制长路线，保证手机导航路径零额外开销。
-        if (!CarNavigationBridge.hasListeners()) return
+        // 路线规划成功后始终保存百度路线。Android Auto 可能在手机导航开始后才连接，
+        // 若按监听器存在与否跳过同步，车机将永远拿不到路线轨迹。
         try {
             val infos = BaiduNaviManagerFactory.getRoutePlanManager().getRoutePlanInfo()
             val selected = BaiduNaviManagerFactory.getRoutePlanManager().selectRouteId
@@ -450,6 +450,13 @@ class NaviActivity : Activity() {
             // 部分 SDK 版本在 MSG_NAVI_ROUTE_PLAN_SUCCESS 时路线几何尚未填充完整，
             // 导航 View 创建后再同步一次，避免车机永远停在“正在加载路线地图”。
             syncRouteGeometryToCar()
+            // 部分长路线的折线列表会在导航 View 创建后异步补齐，延迟再同步两次。
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (!closingNavi) syncRouteGeometryToCar()
+            }, 1000)
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (!closingNavi) syncRouteGeometryToCar()
+            }, 3000)
             setContentView(view)
             // SDK 偶尔会从持久化调试设置恢复 common_debug_layout，正式版强制隐藏。
             val debugLayoutId = resources.getIdentifier("common_debug_layout", "id", packageName)
