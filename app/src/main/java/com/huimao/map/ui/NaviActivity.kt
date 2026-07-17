@@ -12,6 +12,8 @@ import android.os.Message
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.view.KeyEvent
+import android.view.View
+import android.view.ViewGroup
 import android.widget.TextView
 import androidx.datastore.preferences.core.emptyPreferences
 import com.baidu.location.BDAbstractLocationListener
@@ -51,6 +53,7 @@ class NaviActivity : Activity() {
     private var locationClient: LocationClient? = null
     private var locationListener: BDAbstractLocationListener? = null
     private var systemTts: TextToSpeech? = null
+    private var guideRootView: View? = null
     @Volatile private var ttsReady = false
 
     private var startLat = 0.0
@@ -76,20 +79,22 @@ class NaviActivity : Activity() {
             panel: com.baidu.navisdk.adapter.struct.GuidePanelMessage?
         ) {
             if (info == null) return
-            // 与手机百度导航顶部面板使用完全相同的数据源：
-            // 距离取 BNaviInfo.distance，文字取 GuidePanelMessage.stringBuilder，
-            // 转向类型取 BNaviInfo.turnIconName；不再用路线几何或文字自行估算距离。
-            val cue = panel?.stringBuilder?.toString()?.trim()?.takeIf { it.isNotBlank() }
+            // Android Auto 左上角优先读取手机端百度原生导航面板已经渲染出的文字。
+            // BNaviInfo.distance 在当前 AAR 中会阶段性为 0，GuidePanelMessage 也不一定是最终 UI 文案，
+            // 所以先抓 bnav_rg_sg_after_meters_info/nav_guide_info_distance 等控件，抓不到再用回调兜底。
+            val nativePanel = readNativeGuidePanel()
+            val callbackCue = panel?.stringBuilder?.toString()?.trim()?.takeIf { it.isNotBlank() }
                 ?: info.roadName?.takeIf { it.isNotBlank() } ?: "继续行驶"
+            val cue = nativePanel?.instruction?.takeIf { it.isNotBlank() } ?: callbackCue
+            val distance = nativePanel?.distanceMeters?.takeIf { it > 0 }
+                ?: info.distance.takeIf { it > 0 }
             val maneuver = inferCarManeuver(info.turnIconName.orEmpty(), cue)
             CarNavigationBridge.update { previous ->
                 previous.copy(
                     instruction = cue,
                     maneuverType = maneuver,
                     roadName = info.roadName.orEmpty(),
-                    // 百度偶尔会短暂回传 0；保留上一帧有效值，避免左上角闪成 0 米。
-                    distanceToTurnMeters = if (info.distance > 0) info.distance
-                        else previous.distanceToTurnMeters
+                    distanceToTurnMeters = distance ?: previous.distanceToTurnMeters
                 )
             }
         }
@@ -422,6 +427,38 @@ class NaviActivity : Activity() {
         } catch (e: Throwable) { showError("❌ routePlan 异常: ${e.message}") }
     }
 
+    private data class NativeGuidePanel(val distanceMeters: Int, val instruction: String)
+
+    private fun readNativeGuidePanel(): NativeGuidePanel? {
+        val root = guideRootView ?: return null
+        fun id(name: String): Int? = resources.getIdentifier(name, "id", packageName).takeIf { it != 0 }
+            ?: resources.getIdentifier(name, "id", "com.baidu.navisdk.embed").takeIf { it != 0 }
+        fun text(name: String): String {
+            val view = id(name)?.let { root.findViewById<View>(it) } ?: return ""
+            fun collect(v: View): String = when (v) {
+                is TextView -> v.text?.toString()?.trim().orEmpty()
+                is ViewGroup -> (0 until v.childCount).joinToString("") { collect(v.getChildAt(it)) }
+                else -> ""
+            }
+            return collect(view).trim()
+        }
+        val distanceText = listOf(
+            text("bnav_rg_sg_after_meters_info") + text("bnav_rg_sg_after_label_info"),
+            text("bnav_rg_distance_num_text") + text("bnav_rg_after_label_info"),
+            text("nav_guide_info_distance")
+        ).firstOrNull { it.isNotBlank() }.orEmpty()
+        val instruction = listOf(
+            text("bnav_rg_sg_link_info") + text("bnav_rg_sg_go_where_info"),
+            text("bnav_rg_sg_go_label_tv") + text("bnav_rg_sg_go_where_info"),
+            text("bnav_rg_enter_next_road") + text("bnav_rg_next_road"),
+            text("bnav_rg_highway_enter_next_road") + text("bnav_rg_highway_next_road"),
+            text("bnav_rg_hw_go_to_word") + text("bnav_rg_hw_go_where_multi_tv"),
+            text("bnav_rg_enlarge_next_road")
+        ).map { it.trim() }.firstOrNull { it.isNotBlank() }.orEmpty()
+        val distance = parseGuideDistanceMeters(distanceText)
+        return if (distance > 0 || instruction.isNotBlank()) NativeGuidePanel(distance, instruction) else null
+    }
+
     private fun parseGuideDistanceMeters(text: String): Int {
         val normalized = text.replace(",", "").replace("，", "")
         Regex("([0-9]+(?:\\.[0-9]+)?)\\s*(公里|千米|km)", RegexOption.IGNORE_CASE)
@@ -495,6 +532,7 @@ class NaviActivity : Activity() {
             val view = manager.onCreate(this, BNGuideConfig.Builder().build())
             if (view == null) { showError("❌ 百度导航界面初始化失败：onCreate 返回 null"); return }
             guideCreated = true
+            guideRootView = view
             CarNavigationBridge.start(destName)
             // 部分 SDK 版本在 MSG_NAVI_ROUTE_PLAN_SUCCESS 时路线几何尚未填充完整，
             // 导航 View 创建后再同步一次，避免车机永远停在“正在加载路线地图”。
