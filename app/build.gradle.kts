@@ -11,8 +11,8 @@ android {
         applicationId = "com.huimao.map"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "1.0.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
@@ -22,10 +22,14 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("../keystore/release.jks")
-            storePassword = "BaiduNavi@2024"
-            keyAlias = "release"
-            keyPassword = "BaiduNavi@2024"
+            storeFile = file(System.getenv("HUIMAO_KEYSTORE_PATH") ?: "../keystore/release.jks")
+            storePassword = System.getenv("HUIMAO_KEYSTORE_PASSWORD")
+                ?: providers.gradleProperty("HUIMAO_KEYSTORE_PASSWORD").orNull
+                ?: error("Missing HUIMAO_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("HUIMAO_KEY_ALIAS") ?: "release"
+            keyPassword = System.getenv("HUIMAO_KEY_PASSWORD")
+                ?: providers.gradleProperty("HUIMAO_KEY_PASSWORD").orNull
+                ?: storePassword
         }
     }
 

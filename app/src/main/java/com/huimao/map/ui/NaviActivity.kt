@@ -79,23 +79,26 @@ class NaviActivity : Activity() {
             panel: com.baidu.navisdk.adapter.struct.GuidePanelMessage?
         ) {
             if (info == null) return
-            // Android Auto 左上角优先读取手机端百度原生导航面板已经渲染出的文字。
-            // BNaviInfo.distance 在当前 AAR 中会阶段性为 0，GuidePanelMessage 也不一定是最终 UI 文案，
-            // 所以先抓 bnav_rg_sg_after_meters_info/nav_guide_info_distance 等控件，抓不到再用回调兜底。
-            val nativePanel = readNativeGuidePanel()
             val callbackCue = panel?.stringBuilder?.toString()?.trim()?.takeIf { it.isNotBlank() }
                 ?: info.roadName?.takeIf { it.isNotBlank() } ?: "继续行驶"
-            val cue = nativePanel?.instruction?.takeIf { it.isNotBlank() } ?: callbackCue
-            val distance = nativePanel?.distanceMeters?.takeIf { it > 0 }
-                ?: info.distance.takeIf { it > 0 }
-            val maneuver = inferCarManeuver(info.turnIconName.orEmpty(), cue)
+            val callbackDistance = info.distance.takeIf { it > 0 }
+            val iconName = info.turnIconName.orEmpty()
+            val roadName = info.roadName.orEmpty()
+
+            // 回调可能不在主线程，且触发时百度原生 View 可能还没完成这一帧文本更新。
+            // 先用回调立即更新兜底，再在主线程当前帧和下一帧读取手机端最终渲染结果覆盖。
             CarNavigationBridge.update { previous ->
                 previous.copy(
-                    instruction = cue,
-                    maneuverType = maneuver,
-                    roadName = info.roadName.orEmpty(),
-                    distanceToTurnMeters = distance ?: previous.distanceToTurnMeters
+                    instruction = callbackCue,
+                    maneuverType = inferCarManeuver(iconName, callbackCue),
+                    roadName = roadName,
+                    distanceToTurnMeters = callbackDistance ?: previous.distanceToTurnMeters
                 )
+            }
+            runOnUiThread {
+                syncNativeGuidePanelToCar(iconName, roadName)
+                guideRootView?.post { syncNativeGuidePanelToCar(iconName, roadName) }
+                guideRootView?.postDelayed({ syncNativeGuidePanelToCar(iconName, roadName) }, 80L)
             }
         }
         override fun onSpeedUpdate(speed: Int, limit: Int) {
@@ -428,6 +431,20 @@ class NaviActivity : Activity() {
     }
 
     private data class NativeGuidePanel(val distanceMeters: Int, val instruction: String)
+
+    private fun syncNativeGuidePanelToCar(iconName: String, roadName: String) {
+        val native = readNativeGuidePanel() ?: return
+        CarNavigationBridge.update { previous ->
+            val cue = native.instruction.takeIf { it.isNotBlank() } ?: previous.instruction
+            previous.copy(
+                instruction = cue,
+                maneuverType = inferCarManeuver(iconName, cue),
+                roadName = roadName.ifBlank { previous.roadName },
+                distanceToTurnMeters = native.distanceMeters.takeIf { it > 0 }
+                    ?: previous.distanceToTurnMeters
+            )
+        }
+    }
 
     private fun readNativeGuidePanel(): NativeGuidePanel? {
         val root = guideRootView ?: return null

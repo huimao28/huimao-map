@@ -23,22 +23,20 @@ jobs:
         with:
           gradle-version: 8.11.1
 
-      - name: Ensure release keystore
+      - name: Restore fixed release keystore
+        env:
+          HUIMAO_KEYSTORE_BASE64: ${{ secrets.HUIMAO_KEYSTORE_BASE64 }}
         run: |
-          if [ ! -f keystore/release.jks ]; then
-            mkdir -p keystore
-            keytool -genkeypair -v \
-              -keystore keystore/release.jks \
-              -storepass 'BaiduNavi@2024' \
-              -keypass 'BaiduNavi@2024' \
-              -alias release \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname 'CN=Huimao Map, OU=CI, O=Huimao, L=Shanghai, ST=Shanghai, C=CN'
-          fi
+          test -n "$HUIMAO_KEYSTORE_BASE64"
+          mkdir -p keystore
+          printf '%s' "$HUIMAO_KEYSTORE_BASE64" | base64 --decode > keystore/release.jks
 
       - name: Build release APK
+        env:
+          HUIMAO_KEYSTORE_PATH: ${{ github.workspace }}/keystore/release.jks
+          HUIMAO_KEYSTORE_PASSWORD: ${{ secrets.HUIMAO_KEYSTORE_PASSWORD }}
+          HUIMAO_KEY_PASSWORD: ${{ secrets.HUIMAO_KEYSTORE_PASSWORD }}
+          HUIMAO_KEY_ALIAS: release
         run: gradle assembleRelease --stacktrace
 
       - name: Upload APK artifact
