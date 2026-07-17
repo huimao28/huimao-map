@@ -4,6 +4,10 @@ on:
   workflow_dispatch:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -44,3 +48,19 @@ jobs:
         with:
           name: BaiduNaviAuto-fixed-release-apk
           path: app/build/outputs/apk/release/*.apk
+
+      - name: Prepare tagged release files
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cp app/build/outputs/apk/release/app-release.apk "HuimaoMap_${VERSION}.apk"
+          git archive --format=zip --output="HuimaoMap_${VERSION}_full_source.zip" HEAD
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            HuimaoMap_*.apk
+            HuimaoMap_*_full_source.zip
