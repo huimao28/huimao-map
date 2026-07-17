@@ -23,6 +23,21 @@ jobs:
         with:
           gradle-version: 8.11.1
 
+      - name: Ensure release keystore
+        run: |
+          if [ ! -f keystore/release.jks ]; then
+            mkdir -p keystore
+            keytool -genkeypair -v \
+              -keystore keystore/release.jks \
+              -storepass 'BaiduNavi@2024' \
+              -keypass 'BaiduNavi@2024' \
+              -alias release \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname 'CN=Huimao Map, OU=CI, O=Huimao, L=Shanghai, ST=Shanghai, C=CN'
+          fi
+
       - name: Build release APK
         run: gradle assembleRelease --stacktrace
 
