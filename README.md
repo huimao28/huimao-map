@@ -23,13 +23,21 @@ gradle assembleRelease
 
 ## 微信位置转发
 
-配套转发器位于独立源码包 `WeChatLocationRedirector`。代理应用通过：
+配套转发器源码位于仓库的 `redirector/` 模块。每次 GitHub Release 会同时提供三个 APK：
+
+- 百度地图入口：包名 `com.baidu.BaiduMap`
+- 高德地图入口：包名 `com.autonavi.minimap`
+- 腾讯地图入口：包名 `com.tencent.map`
+
+三个版本都会通过：
 
 ```text
 baidunaviauto://navigate?lat=...&lng=...&name=...
 ```
 
 启动灰猫地图。
+
+> 代理 APK 与对应官方地图使用相同包名，不能同时安装；只需安装一个与手机现有地图不冲突的版本。旧腾讯 1.4 与当前固定签名不同，升级 1.5 时需先卸载旧代理；之后可覆盖升级。
 
 ## 版本
 
