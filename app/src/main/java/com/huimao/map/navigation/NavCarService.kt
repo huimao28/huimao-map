@@ -165,7 +165,8 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         val state = CarNavigationBridge.state
         val zoom = 15
         val now = System.currentTimeMillis()
-        val centerBd = navigationCenter(state, now) ?: state.routePoints.firstOrNull() ?: return
+        val rawCenterBd = navigationCenter(state, now) ?: state.routePoints.firstOrNull() ?: return
+        val centerBd = snapToRoute(rawCenterBd, state.routePoints)
         val centerPx = baiduWorldPixel(centerBd.first, centerBd.second, zoom)
         val vehicleScreenX = surfaceWidth * 0.50f
         val vehicleScreenY = surfaceHeight * 0.68f
@@ -192,7 +193,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             canvas.save()
             // 将地图与路线反向旋转，车辆航向始终朝屏幕上方。
             canvas.rotate(-mapBearing, vehicleScreenX, vehicleScreenY)
-            drawTiles(canvas, originX, originY, zoom)
+            drawTiles(canvas, centerPx.first, centerPx.second, vehicleScreenX, vehicleScreenY, zoom, mapBearing)
 
             val path = Path()
             var hasPath = false
@@ -231,6 +232,38 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         } finally {
             if (canvas != null) runCatching { surface.unlockCanvasAndPost(canvas) }
         }
+    }
+
+    private fun snapToRoute(
+        location: Pair<Double, Double>,
+        route: List<Pair<Double, Double>>
+    ): Pair<Double, Double> {
+        if (route.size < 2) return location
+        val latScale = 111_320.0
+        val lngScale = latScale * cos(Math.toRadians(location.first)).coerceAtLeast(0.2)
+        var best = location
+        var bestDistance = Double.POSITIVE_INFINITY
+        for (i in 0 until route.lastIndex) {
+            val a = route[i]
+            val b = route[i + 1]
+            val ax = (a.second - location.second) * lngScale
+            val ay = (a.first - location.first) * latScale
+            val bx = (b.second - location.second) * lngScale
+            val by = (b.first - location.first) * latScale
+            val vx = bx - ax
+            val vy = by - ay
+            val length2 = vx * vx + vy * vy
+            val t = if (length2 > 0.01) (-(ax * vx + ay * vy) / length2).coerceIn(0.0, 1.0) else 0.0
+            val px = ax + vx * t
+            val py = ay + vy * t
+            val distance = kotlin.math.hypot(px, py)
+            if (distance < bestDistance) {
+                bestDistance = distance
+                best = (a.first + (b.first - a.first) * t) to (a.second + (b.second - a.second) * t)
+            }
+        }
+        // 只校正导航匹配尺度内的偏移；距离路线过远时保留真实定位，避免贴到错误道路。
+        return if (bestDistance <= 100.0) best else location
     }
 
     private fun navigationCenter(state: CarNavigationState, now: Long): Pair<Double, Double>? {
@@ -392,11 +425,42 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         return (if (x < 0) -mx else mx) to (if (y < 0) -my else my)
     }
 
-    private fun drawTiles(canvas: Canvas, originX: Double, originY: Double, zoom: Int) {
-        val minX = kotlin.math.floor(originX / 256.0).toInt()
-        val maxX = kotlin.math.floor((originX + surfaceWidth) / 256.0).toInt()
-        val minY = kotlin.math.floor(originY / 256.0).toInt()
-        val maxY = kotlin.math.floor((originY + surfaceHeight) / 256.0).toInt()
+    private fun drawTiles(
+        canvas: Canvas,
+        centerWorldX: Double,
+        centerWorldY: Double,
+        pivotX: Float,
+        pivotY: Float,
+        zoom: Int,
+        bearing: Float
+    ) {
+        // Canvas 已经围绕车辆旋转。按屏幕四角反向旋转到地图坐标，求出真正需要绘制的包围盒；
+        // 不能只画未旋转屏幕矩形，否则 45° 左右时四角必然露出黑块。
+        val rad = Math.toRadians(bearing.toDouble())
+        val c = kotlin.math.cos(rad)
+        val s = kotlin.math.sin(rad)
+        val corners = arrayOf(0f to 0f, surfaceWidth.toFloat() to 0f,
+            0f to surfaceHeight.toFloat(), surfaceWidth.toFloat() to surfaceHeight.toFloat())
+        var minWorldX = Double.POSITIVE_INFINITY
+        var maxWorldX = Double.NEGATIVE_INFINITY
+        var minWorldY = Double.POSITIVE_INFINITY
+        var maxWorldY = Double.NEGATIVE_INFINITY
+        corners.forEach { (x, y) ->
+            val dx = x - pivotX
+            val dy = y - pivotY
+            val ux = dx * c - dy * s
+            val uy = dx * s + dy * c
+            minWorldX = minOf(minWorldX, centerWorldX + ux)
+            maxWorldX = maxOf(maxWorldX, centerWorldX + ux)
+            minWorldY = minOf(minWorldY, centerWorldY + uy)
+            maxWorldY = maxOf(maxWorldY, centerWorldY + uy)
+        }
+        val minX = kotlin.math.floor(minWorldX / 256.0).toInt() - 1
+        val maxX = kotlin.math.floor(maxWorldX / 256.0).toInt() + 1
+        val minY = kotlin.math.floor(minWorldY / 256.0).toInt() - 1
+        val maxY = kotlin.math.floor(maxWorldY / 256.0).toInt() + 1
+        val originX = centerWorldX - pivotX
+        val originY = centerWorldY - pivotY
         for (tx in minX..maxX) for (ty in minY..maxY) {
             val bitmap = tileCache["$zoom/$tx/$ty"] ?: continue
             val left = (tx * 256.0 - originX).toFloat()
@@ -470,7 +534,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             tileRenderPending = false
             if (carSurface?.isValid == true) renderMap()
-        }, 180L)
+        }, 80L)
     }
 
     // 路线、位置和底图都保持百度 BD09LL / 百度墨卡托，避免跨坐标系图层不全和路线偏移。
