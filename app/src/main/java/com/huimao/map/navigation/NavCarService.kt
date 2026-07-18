@@ -69,7 +69,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     private val tileCache = ConcurrentHashMap<String, android.graphics.Bitmap>()
     private val tileOrder = java.util.concurrent.ConcurrentLinkedQueue<String>()
     private val tilesInFlight = ConcurrentHashMap.newKeySet<String>()
-    private val tileExecutor = Executors.newFixedThreadPool(4)
+    private val tileExecutor = Executors.newFixedThreadPool(3)
     @Volatile private var tileRenderPending = false
     private val baiduTileUdt = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
     private val surfaceCallback = object : SurfaceCallback {
@@ -175,7 +175,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         // 按屏幕对角线取正方形，再额外预取 512px 缓冲圈，车辆移动时不露黑边。
         val prefetchRadius = kotlin.math.ceil(
             kotlin.math.hypot(surfaceWidth.toDouble(), surfaceHeight.toDouble()) / 2.0
-        ).toInt() + 768
+        ).toInt() + 384
         requestVisibleTiles(
             centerPx.first - prefetchRadius,
             centerPx.second - prefetchRadius,
@@ -349,7 +349,6 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             color = Color.argb(218, 45, 52, 61); textSize = 25f
         }
         val paddingX = 22f
-        val paddingY = 14f
         val textWidth = paint.measureText(text)
         val right = surfaceWidth - 24f
         val top = 26f
@@ -366,8 +365,9 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     private fun baiduWorldPixel(lat: Double, lng: Double, zoom: Int): Pair<Double, Double> {
         val mercator = bd09ToBaiduMercator(lat, lng)
         val scale = 2.0.pow(18 - zoom)
-        val worldSize = 256.0 * 2.0.pow(zoom)
-        return (mercator.first / scale + worldSize / 2.0) to (worldSize / 2.0 - mercator.second / scale)
+        // 百度瓦片 x/y 以墨卡托原点为 (0,0)，Y 轴向北为正；
+        // Canvas 世界像素则以左上为原点、Y 轴向南为正。
+        return (mercator.first / scale) to (-mercator.second / scale)
     }
 
     private fun bd09ToBaiduMercator(lat: Double, lng: Double): Pair<Double, Double> {
@@ -397,11 +397,8 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         val maxX = kotlin.math.floor((originX + surfaceWidth) / 256.0).toInt()
         val minY = kotlin.math.floor(originY / 256.0).toInt()
         val maxY = kotlin.math.floor((originY + surfaceHeight) / 256.0).toInt()
-        val count = 1 shl zoom
         for (tx in minX..maxX) for (ty in minY..maxY) {
-            if (ty !in 0 until count) continue
-            val wrappedX = ((tx % count) + count) % count
-            val bitmap = tileCache["$zoom/$wrappedX/$ty"] ?: continue
+            val bitmap = tileCache["$zoom/$tx/$ty"] ?: continue
             val left = (tx * 256.0 - originX).toFloat()
             val top = (ty * 256.0 - originY).toFloat()
             canvas.drawBitmap(bitmap, left, top, null)
@@ -419,31 +416,29 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         val maxX = kotlin.math.floor((originX + viewportWidth) / 256.0).toInt()
         val minY = kotlin.math.floor(originY / 256.0).toInt()
         val maxY = kotlin.math.floor((originY + viewportHeight) / 256.0).toInt()
-        val count = 1 shl zoom
         val missing = ArrayList<Triple<Int, Int, String>>()
         for (tx in minX..maxX) for (ty in minY..maxY) {
-            if (ty !in 0 until count) continue
-            val x = ((tx % count) + count) % count
-            val key = "$zoom/$x/$ty"
+            val key = "$zoom/$tx/$ty"
             if (!tileCache.containsKey(key) && tilesInFlight.add(key)) {
-                missing.add(Triple(x, ty, key))
+                missing.add(Triple(tx, ty, key))
             }
         }
         val centerTileX = kotlin.math.floor((originX + viewportWidth / 2.0) / 256.0).toInt()
         val centerTileY = kotlin.math.floor((originY + viewportHeight / 2.0) / 256.0).toInt()
         // 中心优先：当前可见区域先完成，外围预取随后，避免缓冲瓦片抢占下载队列。
         missing.sortBy { (x, y, _) ->
-            val dx = kotlin.math.abs(x - ((centerTileX % count + count) % count))
-            val wrappedDx = minOf(dx, count - dx)
-            wrappedDx * wrappedDx + (y - centerTileY) * (y - centerTileY)
+            val dx = x - centerTileX
+            dx * dx + (y - centerTileY) * (y - centerTileY)
         }
         // 提交整个预取区域；tilesInFlight 会去重，四线程按中心距离依次加载。
         missing.forEach { (x, y, key) ->
             runCatching {
                 tileExecutor.execute {
                     try {
-                        val tileY = y - count / 2
-                        val connection = URL("https://maponline${kotlin.math.abs(x + y) % 4}.bdimg.com/tile/?qt=vtile&x=$x&y=$tileY&z=$zoom&styles=pl&scaler=1&udt=$baiduTileUdt")
+                        // Canvas 的 ty 向南递增；百度接口 y 向北递增。
+                        val tileY = -y
+                        val shard = ((x + y) % 4 + 4) % 4
+                        val connection = URL("https://maponline$shard.bdimg.com/tile/?qt=vtile&x=$x&y=$tileY&z=$zoom&styles=pl&scaler=1&udt=$baiduTileUdt")
                             .openConnection() as HttpURLConnection
                         connection.connectTimeout = 4000
                         connection.readTimeout = 5000
@@ -452,7 +447,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
                             BitmapFactory.decodeStream(input)?.let { bitmap ->
                                 tileCache[key] = bitmap
                                 tileOrder.add(key)
-                                while (tileCache.size > 320) {
+                                while (tileCache.size > 160) {
                                     val oldKey = tileOrder.poll() ?: break
                                     // 只移出缓存，不主动 recycle，避免与 Surface 绘制竞态。
                                     tileCache.remove(oldKey)

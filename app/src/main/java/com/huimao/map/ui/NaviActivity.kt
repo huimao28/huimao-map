@@ -76,7 +76,11 @@ class NaviActivity : Activity() {
     private var destName = ""
 
     private val naviListener = object : IBNaviListener() {
-        override fun onNaviGuideEnd() { CarNavigationBridge.stop(); closeNaviActivity() }
+        override fun onNaviGuideEnd() {
+            // SDK 在重算路线、切换诱导页面时也可能短暂回调 guideEnd，不能据此直接退出。
+            // 只有明确的 onArriveDestination 才结束导航。
+            Log.w(TAG, "onNaviGuideEnd received; keep activity until destination or user exit")
+        }
         override fun onArriveDestination() { CarNavigationBridge.stop(); closeNaviActivity() }
         override fun onRoadNameUpdate(roadName: String?) {
             CarNavigationBridge.update { it.copy(roadName = roadName.orEmpty()) }
@@ -108,11 +112,9 @@ class NaviActivity : Activity() {
                     distanceToTurnMeters = callbackDistance ?: previous.distanceToTurnMeters
                 )
             }
-            runOnUiThread {
-                syncNativeGuidePanelToCar(iconName, roadName)
-                guideRootView?.post { syncNativeGuidePanelToCar(iconName, roadName) }
-                guideRootView?.postDelayed({ syncNativeGuidePanelToCar(iconName, roadName) }, 80L)
-            }
+            // 车机指引只使用百度导航回调。读取原生 View 容易读到上一帧或相邻控件，
+            // 会把正确的 GuidePanelMessage 覆盖成错误路线文字。
+            // 手机端原生界面仍由百度 SDK 自己更新。
         }
         override fun onSpeedUpdate(speed: Int, limit: Int) {
             CarNavigationBridge.update { it.copy(speedKmh = speed.coerceAtLeast(0)) }
