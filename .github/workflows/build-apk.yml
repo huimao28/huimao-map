@@ -35,25 +35,39 @@ jobs:
           mkdir -p keystore
           printf '%s' "$HUIMAO_KEYSTORE_BASE64" | base64 --decode > keystore/release.jks
 
-      - name: Build release APK
+      - name: Build release APKs
         env:
           HUIMAO_KEYSTORE_PATH: ${{ github.workspace }}/keystore/release.jks
           HUIMAO_KEYSTORE_PASSWORD: ${{ secrets.HUIMAO_KEYSTORE_PASSWORD }}
           HUIMAO_KEY_PASSWORD: ${{ secrets.HUIMAO_KEYSTORE_PASSWORD }}
           HUIMAO_KEY_ALIAS: release
-        run: gradle assembleRelease --stacktrace
+        run: |
+          gradle :app:assembleRelease :redirector:assembleRelease \
+            -PproxyPackage=com.baidu.BaiduMap -PproxyType=baidu --stacktrace
+          mkdir -p release-files
+          cp app/build/outputs/apk/release/app-release.apk release-files/HuimaoMap_${GITHUB_REF_NAME#v}.apk
+          cp redirector/build/outputs/apk/release/app-release.apk release-files/WeChatRedirect_Baidu_${GITHUB_REF_NAME#v}.apk
+          gradle :redirector:assembleRelease \
+            -PproxyPackage=com.autonavi.minimap -PproxyType=amap --stacktrace
+          cp redirector/build/outputs/apk/release/app-release.apk release-files/WeChatRedirect_AMap_${GITHUB_REF_NAME#v}.apk
+          gradle :redirector:assembleRelease \
+            -PproxyPackage=com.tencent.map -PproxyType=tencent --stacktrace
+          cp redirector/build/outputs/apk/release/app-release.apk release-files/WeChatRedirect_Tencent_${GITHUB_REF_NAME#v}.apk
 
-      - name: Upload APK artifact
+      - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BaiduNaviAuto-fixed-release-apk
-          path: app/build/outputs/apk/release/*.apk
+          name: HuimaoMap-and-Redirectors
+          path: release-files/*.apk
 
       - name: Prepare tagged release files
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          cp app/build/outputs/apk/release/app-release.apk "HuimaoMap_${VERSION}.apk"
+          cp release-files/HuimaoMap_${VERSION}.apk "HuimaoMap_${VERSION}.apk"
+          cp release-files/WeChatRedirect_Baidu_${VERSION}.apk "WeChatRedirect_Baidu_${VERSION}.apk"
+          cp release-files/WeChatRedirect_AMap_${VERSION}.apk "WeChatRedirect_AMap_${VERSION}.apk"
+          cp release-files/WeChatRedirect_Tencent_${VERSION}.apk "WeChatRedirect_Tencent_${VERSION}.apk"
           git archive --format=zip --output="HuimaoMap_${VERSION}_full_source.zip" HEAD
 
       - name: Publish tagged release
@@ -63,4 +77,7 @@ jobs:
           generate_release_notes: true
           files: |
             HuimaoMap_*.apk
+            WeChatRedirect_Baidu_*.apk
+            WeChatRedirect_AMap_*.apk
+            WeChatRedirect_Tencent_*.apk
             HuimaoMap_*_full_source.zip

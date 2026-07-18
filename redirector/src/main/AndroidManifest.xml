@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <queries>
+        <package android:name="com.huimao.map" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="baidunaviauto" />
+        </intent>
+    </queries>
+    <application
+        android:allowBackup="false"
+        android:label="微信位置转灰猫地图"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.Light.Dialog.NoActionBar">
+        <activity
+            android:name="com.huimao.redirector.RedirectActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <action android:name="com.autonavi.minimap.ACTION" />
+                <action android:name="com.baidu.baidumaps.action.ENTRY" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="wechatnav" />
+                <data android:scheme="geo" />
+                <data android:scheme="amapuri" />
+                <data android:scheme="androidamap" />
+                <data android:scheme="baidumap" />
+                <data android:scheme="baidu_lauch" />
+                <data android:scheme="bdapp" />
+                <data android:scheme="baidumapmecp" />
+                <data android:scheme="qqmap" />
+                <data android:scheme="sosogeo" />
+                <data android:scheme="sosopoi" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

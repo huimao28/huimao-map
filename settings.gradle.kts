@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "BaiduNaviAuto"
 include(":app")
+include(":redirector")
