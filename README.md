@@ -42,7 +42,7 @@ baidunaviauto://navigate?lat=...&lng=...&name=...
 ## 版本
 
 ```text
-1.0.11
+1.0.12
 ```
 
 ## Android Auto 混合导航架构

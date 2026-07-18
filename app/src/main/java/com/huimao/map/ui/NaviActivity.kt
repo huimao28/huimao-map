@@ -18,7 +18,6 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.TextView
 import androidx.datastore.preferences.core.emptyPreferences
 import com.baidu.location.BDAbstractLocationListener
@@ -183,12 +182,6 @@ class NaviActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 仅使用传统窗口标志消除顶部状态栏留白，不改变百度导航 View 的 Insets、尺寸或生命周期。
-        // 相比 edge-to-edge/WindowInsetsController，这不会触发 SDK 内部重新布局。
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN
-        )
         startLat = intent.getDoubleExtra(EXTRA_START_LAT, 0.0)
         startLng = intent.getDoubleExtra(EXTRA_START_LNG, 0.0)
         destLat = intent.getDoubleExtra(EXTRA_DEST_LAT, 0.0)
