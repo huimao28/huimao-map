@@ -18,8 +18,6 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowInsets
-import android.view.WindowInsetsController
 import android.widget.TextView
 import androidx.datastore.preferences.core.emptyPreferences
 import com.baidu.location.BDAbstractLocationListener
@@ -114,12 +112,10 @@ class NaviActivity : Activity() {
                     distanceToTurnMeters = callbackDistance ?: previous.distanceToTurnMeters
                 )
             }
-            // 百度回调在长路段上可能给出“整段道路”信息，而手机面板显示当前细分动作。
-            // 等这一帧原生面板完成更新后，只读取当前可见控件进行同步。
-            runOnUiThread {
-                guideRootView?.post { syncVisibleNativeGuidePanelToCar(iconName, roadName) }
-                guideRootView?.postDelayed({ syncVisibleNativeGuidePanelToCar(iconName, roadName) }, 120L)
-            }        }
+            // 车机指引只使用百度导航回调。读取原生 View 容易读到上一帧或相邻控件，
+            // 会把正确的 GuidePanelMessage 覆盖成错误路线文字。
+            // 手机端原生界面仍由百度 SDK 自己更新。
+        }
         override fun onSpeedUpdate(speed: Int, limit: Int) {
             CarNavigationBridge.update { it.copy(speedKmh = speed.coerceAtLeast(0)) }
         }
@@ -186,7 +182,6 @@ class NaviActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        hideSystemBars()
         startLat = intent.getDoubleExtra(EXTRA_START_LAT, 0.0)
         startLng = intent.getDoubleExtra(EXTRA_START_LNG, 0.0)
         destLat = intent.getDoubleExtra(EXTRA_DEST_LAT, 0.0)
@@ -196,16 +191,6 @@ class NaviActivity : Activity() {
         audioManager = getSystemService(AudioManager::class.java)
         if (voiceEnabled && ttsProvider == "system") initSystemTts()
         checkPermissionAndInit()
-    }
-
-    private fun hideSystemBars() {
-        window.setDecorFitsSystemWindows(false)
-        window.statusBarColor = android.graphics.Color.TRANSPARENT
-        window.navigationBarColor = android.graphics.Color.TRANSPARENT
-        window.insetsController?.apply {
-            hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-            systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        }
     }
 
     private fun checkPermissionAndInit() {
@@ -588,45 +573,6 @@ class NaviActivity : Activity() {
 
     private data class NativeGuidePanel(val distanceMeters: Int, val instruction: String)
 
-    private fun syncVisibleNativeGuidePanelToCar(iconName: String, roadName: String) {
-        val native = readVisibleNativeGuidePanel() ?: return
-        CarNavigationBridge.update { previous ->
-            val cue = native.instruction.takeIf { it.isNotBlank() } ?: previous.instruction
-            previous.copy(
-                instruction = cue,
-                maneuverType = inferCarManeuver(iconName, cue),
-                roadName = roadName.ifBlank { previous.roadName },
-                distanceToTurnMeters = native.distanceMeters.takeIf { it > 0 }
-                    ?: previous.distanceToTurnMeters
-            )
-        }
-    }
-
-    private fun readVisibleNativeGuidePanel(): NativeGuidePanel? {
-        val root = guideRootView ?: return null
-        fun visibleTextViews(name: String): List<TextView> {
-            val result = ArrayList<TextView>()
-            fun walk(v: View) {
-                if (!v.isShown || v.alpha <= 0.05f || v.width <= 0 || v.height <= 0) return
-                if (v is TextView && runCatching { resources.getResourceEntryName(v.id) }.getOrNull() == name) {
-                    if (!v.text.isNullOrBlank()) result.add(v)
-                }
-                if (v is ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
-            }
-            walk(root)
-            return result.sortedBy { view ->
-                val xy = IntArray(2); view.getLocationOnScreen(xy); xy[1]
-            }
-        }
-        fun first(name: String): String = visibleTextViews(name).firstOrNull()?.text?.toString()?.trim().orEmpty()
-        val distanceText = first("bnav_rg_sg_after_meters_info") + first("bnav_rg_sg_after_label_info")
-        val instruction = (first("bnav_rg_sg_link_info") + first("bnav_rg_sg_go_where_info")).trim()
-            .ifBlank { (first("bnav_rg_enter_next_road") + first("bnav_rg_next_road")).trim() }
-            .ifBlank { first("bnav_rg_enlarge_next_road") }
-        val distance = parseGuideDistanceMeters(distanceText)
-        return if (distance > 0 || instruction.isNotBlank()) NativeGuidePanel(distance, instruction) else null
-    }
-
     private fun syncNativeGuidePanelToCar(iconName: String, roadName: String) {
         val native = readNativeGuidePanel() ?: return
         CarNavigationBridge.update { previous ->
@@ -757,7 +703,6 @@ class NaviActivity : Activity() {
                 if (!closingNavi) syncRouteGeometryToCar()
             }, 3000)
             setContentView(view)
-            view.post { hideSystemBars() }
             // SDK 偶尔会从持久化调试设置恢复 common_debug_layout，正式版强制隐藏。
             val debugLayoutId = resources.getIdentifier("common_debug_layout", "id", packageName)
                 .takeIf { it != 0 } ?: resources.getIdentifier(
@@ -815,7 +760,6 @@ class NaviActivity : Activity() {
     override fun onStart() { super.onStart(); if (guideCreated) BaiduNaviManagerFactory.getRouteGuideManager().onStart() }
     override fun onResume() {
         super.onResume()
-        hideSystemBars()
         if (guideCreated) BaiduNaviManagerFactory.getRouteGuideManager().onResume()
     }
     override fun onPause() {

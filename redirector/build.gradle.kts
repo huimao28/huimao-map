@@ -11,8 +11,8 @@ android {
         applicationId = (project.findProperty("proxyPackage") as String?) ?: "com.tencent.map"
         minSdk = 23
         targetSdk = 28
-        versionCode = 9
-        versionName = "1.8-huimao-map"
+        versionCode = 8
+        versionName = "1.7-huimao-map"
         buildConfigField("String", "PROXY_TYPE", "\"${(project.findProperty("proxyType") as String?) ?: "tencent"}\"")
     }
 
