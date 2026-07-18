@@ -112,9 +112,13 @@ class NaviActivity : Activity() {
                     distanceToTurnMeters = callbackDistance ?: previous.distanceToTurnMeters
                 )
             }
-            // 车机指引只使用百度导航回调。读取原生 View 容易读到上一帧或相邻控件，
-            // 会把正确的 GuidePanelMessage 覆盖成错误路线文字。
-            // 手机端原生界面仍由百度 SDK 自己更新。
+            // 百度回调在长路段上有时给出道路级信息，而手机面板显示当前细分动作。
+            // 只在主线程延迟读取当前真正可见的文字控件；不修改导航 View 或 SDK 状态。
+            runOnUiThread {
+                guideRootView?.postDelayed({
+                    syncVisibleGuidePanelToCar(iconName, roadName)
+                }, 100L)
+            }
         }
         override fun onSpeedUpdate(speed: Int, limit: Int) {
             CarNavigationBridge.update { it.copy(speedKmh = speed.coerceAtLeast(0)) }
@@ -572,6 +576,54 @@ class NaviActivity : Activity() {
     }
 
     private data class NativeGuidePanel(val distanceMeters: Int, val instruction: String)
+
+    private fun syncVisibleGuidePanelToCar(iconName: String, roadName: String) {
+        val native = readVisibleGuidePanel() ?: return
+        CarNavigationBridge.update { previous ->
+            val cue = native.instruction.ifBlank { previous.instruction }
+            previous.copy(
+                instruction = cue,
+                maneuverType = inferCarManeuver(iconName, cue),
+                roadName = roadName.ifBlank { previous.roadName },
+                distanceToTurnMeters = native.distanceMeters.takeIf { it > 0 }
+                    ?: previous.distanceToTurnMeters
+            )
+        }
+    }
+
+    private fun readVisibleGuidePanel(): NativeGuidePanel? {
+        val root = guideRootView ?: return null
+        val visibleTexts = HashMap<String, MutableList<Pair<Int, String>>>()
+        fun walk(view: View) {
+            if (view.visibility != View.VISIBLE || !view.isShown || view.alpha <= 0.05f ||
+                view.width <= 0 || view.height <= 0) return
+            if (view is TextView && view.id != View.NO_ID) {
+                val name = runCatching { resources.getResourceEntryName(view.id) }.getOrNull()
+                val value = view.text?.toString()?.trim().orEmpty()
+                if (name != null && value.isNotBlank()) {
+                    val location = IntArray(2)
+                    view.getLocationOnScreen(location)
+                    // 同名控件可能同时存在于隐藏模式中；取屏幕上方当前显示的那组。
+                    visibleTexts.getOrPut(name) { ArrayList() }.add(location[1] to value)
+                }
+            }
+            if (view is ViewGroup) for (i in 0 until view.childCount) walk(view.getChildAt(i))
+        }
+        walk(root)
+        fun text(name: String): String = visibleTexts[name]?.minByOrNull { it.first }?.second.orEmpty()
+        val distanceText = (text("bnav_rg_sg_after_meters_info") +
+            text("bnav_rg_sg_after_label_info")).trim()
+        val instruction = listOf(
+            text("bnav_rg_sg_link_info") + text("bnav_rg_sg_go_where_info"),
+            text("bnav_rg_sg_go_label_tv") + text("bnav_rg_sg_go_where_info"),
+            text("bnav_rg_enter_next_road") + text("bnav_rg_next_road"),
+            text("bnav_rg_highway_enter_next_road") + text("bnav_rg_highway_next_road"),
+            text("bnav_rg_hw_go_to_word") + text("bnav_rg_hw_go_where_multi_tv"),
+            text("bnav_rg_enlarge_next_road")
+        ).map { it.trim() }.firstOrNull { it.isNotBlank() }.orEmpty()
+        val distance = parseGuideDistanceMeters(distanceText)
+        return if (distance > 0 || instruction.isNotBlank()) NativeGuidePanel(distance, instruction) else null
+    }
 
     private fun syncNativeGuidePanelToCar(iconName: String, roadName: String) {
         val native = readNativeGuidePanel() ?: return
