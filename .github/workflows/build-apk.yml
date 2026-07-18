@@ -46,13 +46,13 @@ jobs:
             -PproxyPackage=com.baidu.BaiduMap -PproxyType=baidu --stacktrace
           mkdir -p release-files
           cp app/build/outputs/apk/release/app-release.apk release-files/HuimaoMap_${GITHUB_REF_NAME#v}.apk
-          cp redirector/build/outputs/apk/release/app-release.apk release-files/WeChatRedirect_Baidu_${GITHUB_REF_NAME#v}.apk
-          gradle :redirector:assembleRelease \
+          cp "$(find redirector/build/outputs/apk/release -name '*-release.apk' | head -1)" release-files/WeChatRedirect_Baidu_${GITHUB_REF_NAME#v}.apk
+          gradle :redirector:clean :redirector:assembleRelease \
             -PproxyPackage=com.autonavi.minimap -PproxyType=amap --stacktrace
-          cp redirector/build/outputs/apk/release/app-release.apk release-files/WeChatRedirect_AMap_${GITHUB_REF_NAME#v}.apk
-          gradle :redirector:assembleRelease \
+          cp "$(find redirector/build/outputs/apk/release -name '*-release.apk' | head -1)" release-files/WeChatRedirect_AMap_${GITHUB_REF_NAME#v}.apk
+          gradle :redirector:clean :redirector:assembleRelease \
             -PproxyPackage=com.tencent.map -PproxyType=tencent --stacktrace
-          cp redirector/build/outputs/apk/release/app-release.apk release-files/WeChatRedirect_Tencent_${GITHUB_REF_NAME#v}.apk
+          cp "$(find redirector/build/outputs/apk/release -name '*-release.apk' | head -1)" release-files/WeChatRedirect_Tencent_${GITHUB_REF_NAME#v}.apk
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
