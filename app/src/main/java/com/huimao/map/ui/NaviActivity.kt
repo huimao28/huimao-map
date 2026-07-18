@@ -347,10 +347,18 @@ class NaviActivity : Activity() {
             LocationClient.setAgreePrivacy(true)
             val listener = object : BDAbstractLocationListener() {
                 override fun onReceiveLocation(loc: BDLocation?) {
-                    if (loc == null || loc.latitude == 0.0 || loc.longitude == 0.0) return
-                    pushLocationToNaviEngine(loc)
+                    if (loc == null || loc.latitude == 0.0 || loc.longitude == 0.0) {
+                        markCarLocationLost()
+                        return
+                    }
+                    val valid = isUsableNavigationLocation(loc)
+                    if (valid) {
+                        pushLocationToNaviEngine(loc)
+                    } else {
+                        markCarLocationLost(loc)
+                    }
                     // 微信位置只提供终点；首帧定位到达且导航引擎已就绪后再开始算路。
-                    if (naviEngineReady && !routePlanStarted && startLat == 0.0 && startLng == 0.0) {
+                    if (valid && naviEngineReady && !routePlanStarted && startLat == 0.0 && startLng == 0.0) {
                         startLat = loc.latitude
                         startLng = loc.longitude
                         runOnUiThread { startRoutePlanWhenLocationReady() }
@@ -372,11 +380,42 @@ class NaviActivity : Activity() {
         } catch (e: Throwable) { Log.e(TAG, "Independent location start failed", e) }
     }
 
+    private fun isUsableNavigationLocation(loc: BDLocation): Boolean {
+        val typeOk = when (loc.locType) {
+            BDLocation.TypeGpsLocation,
+            BDLocation.TypeNetWorkLocation,
+            BDLocation.TypeOffLineLocation -> true
+            else -> false
+        }
+        if (!typeOk || loc.latitude == 0.0 || loc.longitude == 0.0) return false
+        val radius = loc.radius.takeIf { it.isFinite() && it > 0f } ?: 999f
+        return radius <= 120f
+    }
+
+    private fun markCarLocationLost(loc: BDLocation? = null) {
+        val radius = loc?.radius?.takeIf { it.isFinite() && it > 0f } ?: CarNavigationBridge.state.accuracyMeters
+        CarNavigationBridge.update { previous ->
+            previous.copy(
+                accuracyMeters = radius,
+                locationReliable = false,
+                inertialNavigation = previous.latitude != 0.0 && previous.longitude != 0.0
+            )
+        }
+    }
+
     private fun pushLocationToNaviEngine(bdLoc: BDLocation) {
         // Android Auto 自绘路线来自百度地图规划页（BD09LL），车辆位置也必须保持 BD09LL。
         CarNavigationBridge.update {
-            it.copy(latitude = bdLoc.latitude, longitude = bdLoc.longitude,
-                bearing = bdLoc.direction, speedKmh = bdLoc.speed.toInt().coerceAtLeast(0))
+            it.copy(
+                latitude = bdLoc.latitude,
+                longitude = bdLoc.longitude,
+                bearing = bdLoc.direction,
+                speedKmh = bdLoc.speed.toInt().coerceAtLeast(0),
+                accuracyMeters = bdLoc.radius.takeIf { radius -> radius.isFinite() && radius > 0f } ?: 0f,
+                lastLocationTimeMs = System.currentTimeMillis(),
+                locationReliable = true,
+                inertialNavigation = false
+            )
         }
         try {
             // 百度定位客户端输出 BD09LL；导航引擎外部定位接口要求 GCJ-02。

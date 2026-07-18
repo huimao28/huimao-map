@@ -37,12 +37,9 @@ import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.PI
-import kotlin.math.atan
 import kotlin.math.cos
-import kotlin.math.ln
 import kotlin.math.pow
-import kotlin.math.sinh
-import kotlin.math.tan
+import kotlin.math.sin
 
 class NavCarService : CarAppService() {
     override fun createHostValidator(): HostValidator = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
@@ -74,6 +71,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     private val tilesInFlight = ConcurrentHashMap.newKeySet<String>()
     private val tileExecutor = Executors.newFixedThreadPool(4)
     @Volatile private var tileRenderPending = false
+    private val baiduTileUdt = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
     private val surfaceCallback = object : SurfaceCallback {
         override fun onSurfaceAvailable(container: SurfaceContainer) {
             carSurface = container.surface
@@ -166,11 +164,9 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         if (!surface.isValid || surfaceWidth <= 0 || surfaceHeight <= 0) return
         val state = CarNavigationBridge.state
         val zoom = 15
-        val centerBd = if (state.latitude != 0.0 && state.longitude != 0.0) {
-            state.latitude to state.longitude
-        } else state.routePoints.firstOrNull() ?: return
-        val center = bd09ToWgs84(centerBd.first, centerBd.second)
-        val centerPx = worldPixel(center.first, center.second, zoom)
+        val now = System.currentTimeMillis()
+        val centerBd = navigationCenter(state, now) ?: state.routePoints.firstOrNull() ?: return
+        val centerPx = baiduWorldPixel(centerBd.first, centerBd.second, zoom)
         val vehicleScreenX = surfaceWidth * 0.50f
         val vehicleScreenY = surfaceHeight * 0.68f
         val originX = centerPx.first - vehicleScreenX
@@ -201,8 +197,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             val path = Path()
             var hasPath = false
             state.routePoints.forEach { bd ->
-                val wgs = bd09ToWgs84(bd.first, bd.second)
-                val px = worldPixel(wgs.first, wgs.second, zoom)
+                val px = baiduWorldPixel(bd.first, bd.second, zoom)
                 val sx = (px.first - originX).toFloat()
                 val sy = (px.second - originY).toFloat()
                 if (!hasPath) { path.moveTo(sx, sy); hasPath = true } else path.lineTo(sx, sy)
@@ -227,14 +222,32 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             canvas.drawCircle(vehicleScreenX, vehicleScreenY, 7f,
                 Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(30, 110, 245) })
             drawGuidanceCard(canvas, state)
+            drawLocationStatus(canvas, state, now)
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE; textSize = 20f; alpha = 190
-                canvas.drawText("© OpenStreetMap contributors", 18f, surfaceHeight - 18f, this)
+                canvas.drawText("© Baidu Maps", 18f, surfaceHeight - 18f, this)
             }
         } catch (_: Throwable) {
         } finally {
             if (canvas != null) runCatching { surface.unlockCanvasAndPost(canvas) }
         }
+    }
+
+    private fun navigationCenter(state: CarNavigationState, now: Long): Pair<Double, Double>? {
+        val lat = state.latitude
+        val lng = state.longitude
+        if (lat == 0.0 || lng == 0.0) return null
+        if (state.locationReliable && !state.inertialNavigation) return lat to lng
+        val ageSeconds = ((now - state.lastLocationTimeMs).coerceAtLeast(0L) / 1000.0)
+            .coerceAtMost(12.0)
+        val speedMps = (state.speedKmh.coerceAtLeast(0) / 3.6).coerceAtMost(33.0)
+        if (ageSeconds <= 0.5 || speedMps <= 0.2) return lat to lng
+        val bearingRad = Math.toRadians(effectiveBearing(state).toDouble())
+        val distance = speedMps * ageSeconds
+        val earth = 6378137.0
+        val dLat = distance * cos(bearingRad) / earth
+        val dLng = distance * sin(bearingRad) / (earth * cos(Math.toRadians(lat)).coerceAtLeast(0.2))
+        return (lat + Math.toDegrees(dLat)) to (lng + Math.toDegrees(dLng))
     }
 
     private fun effectiveBearing(state: CarNavigationState): Float {
@@ -322,13 +335,61 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         }
     }
 
-    private fun worldPixel(lat: Double, lng: Double, zoom: Int): Pair<Double, Double> {
-        val n = 256.0 * 2.0.pow(zoom)
-        val clippedLat = lat.coerceIn(-85.05112878, 85.05112878)
-        val x = (lng + 180.0) / 360.0 * n
-        val rad = Math.toRadians(clippedLat)
-        val y = (1.0 - ln(tan(rad) + 1.0 / cos(rad)) / PI) / 2.0 * n
-        return x to y
+    private fun drawLocationStatus(canvas: Canvas, state: CarNavigationState, now: Long) {
+        val ageMs = now - state.lastLocationTimeMs
+        val show = state.inertialNavigation || !state.locationReliable ||
+            (state.lastLocationTimeMs > 0L && ageMs > 3000L) || state.accuracyMeters >= 80f
+        if (!show) return
+        val text = when {
+            state.inertialNavigation || ageMs > 5000L -> "定位弱，车机惯性导航中"
+            state.accuracyMeters >= 80f -> "定位精度约 ${state.accuracyMeters.toInt()} 米"
+            else -> "定位信号弱"
+        }
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(218, 45, 52, 61); textSize = 25f
+        }
+        val paddingX = 22f
+        val paddingY = 14f
+        val textWidth = paint.measureText(text)
+        val right = surfaceWidth - 24f
+        val top = 26f
+        val left = right - textWidth - paddingX * 2
+        canvas.drawRoundRect(left, top, right, top + 56f, 18f, 18f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(220, 18, 28, 40)
+        })
+        paint.color = Color.WHITE
+        canvas.drawText(text, left + paddingX, top + 37f, paint)
+    }
+
+    // Android Auto 使用百度 Web 瓦片坐标，不再使用标准 WebMercator。
+
+    private fun baiduWorldPixel(lat: Double, lng: Double, zoom: Int): Pair<Double, Double> {
+        val mercator = bd09ToBaiduMercator(lat, lng)
+        val scale = 2.0.pow(18 - zoom)
+        val worldSize = 256.0 * 2.0.pow(zoom)
+        return (mercator.first / scale + worldSize / 2.0) to (worldSize / 2.0 - mercator.second / scale)
+    }
+
+    private fun bd09ToBaiduMercator(lat: Double, lng: Double): Pair<Double, Double> {
+        val x = lng.coerceIn(-180.0, 180.0)
+        val y = lat.coerceIn(-74.0, 74.0)
+        val bands = doubleArrayOf(75.0, 60.0, 45.0, 30.0, 15.0, 0.0)
+        val coef = arrayOf(
+            doubleArrayOf(-0.0015702102444, 111320.7020616939, 1704480524535203.0, -10338987376042340.0, 26112667856603880.0, -35149669176653700.0, 26595700718403920.0, -10725012454188240.0, 1800819912950474.0, 82.5),
+            doubleArrayOf(0.0008277824516172526, 111320.7020463578, 647795574.6671607, -4082003173.641316, 10774905663.51142, -15171875531.51559, 12053065338.62167, -5124939663.577472, 913311935.9512032, 67.5),
+            doubleArrayOf(0.00337398766765, 111320.7020202162, 4481351.045890365, -23393751.19931662, 79682215.47186455, -115964993.2797253, 97236711.15602145, -43661946.33752821, 8477230.501135234, 52.5),
+            doubleArrayOf(0.00220636496208, 111320.7020209128, 51751.86112841131, 3796837.749470245, 992013.7397791013, -1221952.21711287, 1340652.697009075, -620943.6990984312, 144416.9293806241, 37.5),
+            doubleArrayOf(-0.0003441963504368392, 111320.7020576856, 278.2353980772752, 2485758.690035394, 6070.750963243378, 54821.18345352118, 9540.606633304236, -2710.55326746645, 1405.483844121726, 22.5),
+            doubleArrayOf(-0.0003218135878613132, 111320.7020701615, 0.00369383431289, 823725.6402795718, 0.46104986909093, 2351.343141331292, 1.58060784298199, 8.77738589078284, 0.37238884252424, 7.45)
+        )
+        var c = coef.last()
+        for (i in bands.indices) if (kotlin.math.abs(y) >= bands[i]) { c = coef[i]; break }
+        val yy = kotlin.math.abs(y) / c[9]
+        val mx = c[0] + c[1] * kotlin.math.abs(x)
+        var my = c[2]
+        var factor = yy
+        for (i in 3..8) { my += c[i] * factor; factor *= yy }
+        return (if (x < 0) -mx else mx) to (if (y < 0) -my else my)
     }
 
     private fun drawTiles(canvas: Canvas, originX: Double, originY: Double, zoom: Int) {
@@ -381,7 +442,8 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             runCatching {
                 tileExecutor.execute {
                     try {
-                        val connection = URL("https://tile.openstreetmap.org/$zoom/$x/$y.png")
+                        val tileY = y - count / 2
+                        val connection = URL("https://maponline${kotlin.math.abs(x + y) % 4}.bdimg.com/tile/?qt=vtile&x=$x&y=$tileY&z=$zoom&styles=pl&scaler=1&udt=$baiduTileUdt")
                             .openConnection() as HttpURLConnection
                         connection.connectTimeout = 4000
                         connection.readTimeout = 5000
@@ -416,39 +478,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         }, 180L)
     }
 
-    /** 百度 BD09LL 转 WGS-84，供标准道路瓦片和路线对齐。 */
-    private fun bd09ToWgs84(bdLat: Double, bdLng: Double): Pair<Double, Double> {
-        val x = bdLng - 0.0065
-        val y = bdLat - 0.006
-        val z = kotlin.math.sqrt(x * x + y * y) - 0.00002 * kotlin.math.sin(y * PI * 3000.0 / 180.0)
-        val theta = kotlin.math.atan2(y, x) - 0.000003 * kotlin.math.cos(x * PI * 3000.0 / 180.0)
-        val gcjLat = z * kotlin.math.sin(theta)
-        val gcjLng = z * kotlin.math.cos(theta)
-        val a = 6378245.0
-        val ee = 0.00669342162296594323
-        fun transformLat(dx: Double, dy: Double): Double {
-            var r = -100.0 + 2.0 * dx + 3.0 * dy + 0.2 * dy * dy + 0.1 * dx * dy + 0.2 * kotlin.math.sqrt(kotlin.math.abs(dx))
-            r += (20.0 * kotlin.math.sin(6.0 * dx * PI) + 20.0 * kotlin.math.sin(2.0 * dx * PI)) * 2.0 / 3.0
-            r += (20.0 * kotlin.math.sin(dy * PI) + 40.0 * kotlin.math.sin(dy / 3.0 * PI)) * 2.0 / 3.0
-            r += (160.0 * kotlin.math.sin(dy / 12.0 * PI) + 320.0 * kotlin.math.sin(dy / 30.0 * PI)) * 2.0 / 3.0
-            return r
-        }
-        fun transformLng(dx: Double, dy: Double): Double {
-            var r = 300.0 + dx + 2.0 * dy + 0.1 * dx * dx + 0.1 * dx * dy + 0.1 * kotlin.math.sqrt(kotlin.math.abs(dx))
-            r += (20.0 * kotlin.math.sin(6.0 * dx * PI) + 20.0 * kotlin.math.sin(2.0 * dx * PI)) * 2.0 / 3.0
-            r += (20.0 * kotlin.math.sin(dx * PI) + 40.0 * kotlin.math.sin(dx / 3.0 * PI)) * 2.0 / 3.0
-            r += (150.0 * kotlin.math.sin(dx / 12.0 * PI) + 300.0 * kotlin.math.sin(dx / 30.0 * PI)) * 2.0 / 3.0
-            return r
-        }
-        val radLat = gcjLat / 180.0 * PI
-        var magic = kotlin.math.sin(radLat)
-        magic = 1 - ee * magic * magic
-        val sqrtMagic = kotlin.math.sqrt(magic)
-        val dLat = transformLat(gcjLng - 105.0, gcjLat - 35.0) * 180.0 / ((a * (1 - ee)) / (magic * sqrtMagic) * PI)
-        val dLng = transformLng(gcjLng - 105.0, gcjLat - 35.0) * 180.0 / (a / sqrtMagic * kotlin.math.cos(radLat) * PI)
-        return (gcjLat - dLat) to (gcjLng - dLng)
-    }
-
+    // 路线、位置和底图都保持百度 BD09LL / 百度墨卡托，避免跨坐标系图层不全和路线偏移。
     private fun publishTrip() {
         val navigating = CarNavigationBridge.state.navigating
         if (navigating == navigationAnnounced) return

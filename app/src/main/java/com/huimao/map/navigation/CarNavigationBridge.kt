@@ -14,6 +14,10 @@ data class CarNavigationState(
     val latitude: Double = 0.0,
     val longitude: Double = 0.0,
     val bearing: Float = 0f,
+    val accuracyMeters: Float = 0f,
+    val lastLocationTimeMs: Long = 0L,
+    val locationReliable: Boolean = true,
+    val inertialNavigation: Boolean = false,
     val routePoints: List<Pair<Double, Double>> = emptyList(),
     val destinationName: String = "目的地"
 )
