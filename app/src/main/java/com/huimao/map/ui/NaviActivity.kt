@@ -726,11 +726,51 @@ class NaviActivity : Activity() {
                 val pair = end.latitude to end.longitude
                 if (sampled.lastOrNull() != pair) sampled.add(pair)
             }
-            CarNavigationBridge.update { it.copy(routePoints = sampled) }
-            Log.i(TAG, "Synced ${sampled.size}/$total sampled route points to Android Auto")
+            val routeForCar = normalizeRouteToBd09(sampled)
+            CarNavigationBridge.update { it.copy(routePoints = routeForCar) }
+            Log.i(TAG, "Synced ${routeForCar.size}/$total sampled route points to Android Auto")
         } catch (e: Throwable) {
             Log.w(TAG, "Route geometry sync failed", e)
         }
+    }
+
+    private fun normalizeRouteToBd09(points: List<Pair<Double, Double>>): List<Pair<Double, Double>> {
+        if (points.isEmpty()) return points
+        val location = CarNavigationBridge.state.let { state ->
+            (state.latitude to state.longitude).takeIf { state.latitude != 0.0 && state.longitude != 0.0 }
+        } ?: return points
+        val rawDistance = nearestRouteDistanceMeters(location, points)
+        val converted = points.map { gcj02ToBd09(it.first, it.second) }
+        val convertedDistance = nearestRouteDistanceMeters(location, converted)
+        // 百度导航适配层不同版本可能返回 GCJ-02 或 BD-09。只有转换后至少改善 25 米，
+        // 且相对原始路线明显更近时才采用，避免对本来就是 BD-09 的路线重复加偏。
+        val useConverted = convertedDistance + 25.0 < rawDistance &&
+            convertedDistance < rawDistance * 0.70
+        Log.i(TAG, "Route coordinates: raw=${rawDistance.toInt()}m, gcjToBd=${convertedDistance.toInt()}m, converted=$useConverted")
+        return if (useConverted) converted else points
+    }
+
+    private fun nearestRouteDistanceMeters(
+        location: Pair<Double, Double>,
+        points: List<Pair<Double, Double>>
+    ): Double {
+        if (points.isEmpty()) return Double.POSITIVE_INFINITY
+        val latScale = 111_320.0
+        val lngScale = latScale * kotlin.math.cos(Math.toRadians(location.first)).coerceAtLeast(0.2)
+        var best = Double.POSITIVE_INFINITY
+        points.forEach { point ->
+            val dx = (point.second - location.second) * lngScale
+            val dy = (point.first - location.first) * latScale
+            best = minOf(best, kotlin.math.hypot(dx, dy))
+        }
+        return best
+    }
+
+    private fun gcj02ToBd09(lat: Double, lng: Double): Pair<Double, Double> {
+        val xPi = Math.PI * 3000.0 / 180.0
+        val z = kotlin.math.sqrt(lng * lng + lat * lat) + 0.00002 * kotlin.math.sin(lat * xPi)
+        val theta = kotlin.math.atan2(lat, lng) + 0.000003 * kotlin.math.cos(lng * xPi)
+        return (z * kotlin.math.sin(theta) + 0.006) to (z * kotlin.math.cos(theta) + 0.0065)
     }
 
     private fun startGuideOnce() {
