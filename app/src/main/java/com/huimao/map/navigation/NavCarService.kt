@@ -192,16 +192,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             canvas.save()
             // 将地图与路线反向旋转，车辆航向始终朝屏幕上方。
             canvas.rotate(-mapBearing, vehicleScreenX, vehicleScreenY)
-            drawTiles(
-                canvas,
-                centerPx.first - prefetchRadius,
-                centerPx.second - prefetchRadius,
-                prefetchRadius * 2,
-                prefetchRadius * 2,
-                originX,
-                originY,
-                zoom
-            )
+            drawTiles(canvas, originX, originY, zoom)
 
             val path = Path()
             var hasPath = false
@@ -401,26 +392,15 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         return (if (x < 0) -mx else mx) to (if (y < 0) -my else my)
     }
 
-    private fun drawTiles(
-        canvas: Canvas,
-        drawOriginX: Double,
-        drawOriginY: Double,
-        drawWidth: Int,
-        drawHeight: Int,
-        screenOriginX: Double,
-        screenOriginY: Double,
-        zoom: Int
-    ) {
-        // 请求区域本来已经覆盖旋转后的屏幕对角线；绘制也必须使用同一区域。
-        // 旧实现只画未旋转的屏幕矩形，旋转后四角即使已下载也不会被画出来。
-        val minX = kotlin.math.floor(drawOriginX / 256.0).toInt()
-        val maxX = kotlin.math.floor((drawOriginX + drawWidth) / 256.0).toInt()
-        val minY = kotlin.math.floor(drawOriginY / 256.0).toInt()
-        val maxY = kotlin.math.floor((drawOriginY + drawHeight) / 256.0).toInt()
+    private fun drawTiles(canvas: Canvas, originX: Double, originY: Double, zoom: Int) {
+        val minX = kotlin.math.floor(originX / 256.0).toInt()
+        val maxX = kotlin.math.floor((originX + surfaceWidth) / 256.0).toInt()
+        val minY = kotlin.math.floor(originY / 256.0).toInt()
+        val maxY = kotlin.math.floor((originY + surfaceHeight) / 256.0).toInt()
         for (tx in minX..maxX) for (ty in minY..maxY) {
             val bitmap = tileCache["$zoom/$tx/$ty"] ?: continue
-            val left = (tx * 256.0 - screenOriginX).toFloat()
-            val top = (ty * 256.0 - screenOriginY).toFloat()
+            val left = (tx * 256.0 - originX).toFloat()
+            val top = (ty * 256.0 - originY).toFloat()
             canvas.drawBitmap(bitmap, left, top, null)
         }
     }
