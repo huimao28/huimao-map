@@ -171,27 +171,21 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         val vehicleScreenY = surfaceHeight * 0.68f
         val originX = centerPx.first - vehicleScreenX
         val originY = centerPx.second - vehicleScreenY
-        // 地图会围绕车辆旋转，普通屏幕矩形不足以覆盖旋转后的四角。
-        // 按屏幕对角线取正方形，再额外预取 512px 缓冲圈，车辆移动时不露黑边。
-        val prefetchRadius = kotlin.math.ceil(
-            kotlin.math.hypot(surfaceWidth.toDouble(), surfaceHeight.toDouble()) / 2.0
-        ).toInt() + 384
+        // 北向上模式不需要旋转缓冲区，只预取屏幕四周一圈瓦片供车辆移动。
+        val tileMargin = 256
         requestVisibleTiles(
-            centerPx.first - prefetchRadius,
-            centerPx.second - prefetchRadius,
+            originX - tileMargin,
+            originY - tileMargin,
             zoom,
-            prefetchRadius * 2,
-            prefetchRadius * 2
+            surfaceWidth + tileMargin * 2,
+            surfaceHeight + tileMargin * 2
         )
 
         var canvas: Canvas? = null
         try {
             canvas = surface.lockCanvas(null)
             canvas.drawColor(Color.rgb(28, 35, 42))
-            val mapBearing = effectiveBearing(state)
-            canvas.save()
-            // 将地图与路线反向旋转，车辆航向始终朝屏幕上方。
-            canvas.rotate(-mapBearing, vehicleScreenX, vehicleScreenY)
+            // 采用北向上地图，避免旋转矩形四角超出瓦片绘制区域而出现黑块。
             drawTiles(canvas, originX, originY, zoom)
 
             val path = Path()
@@ -206,8 +200,9 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
                 canvas.drawPath(path, haloPaint)
                 canvas.drawPath(path, routePaint)
             }
-            canvas.restore()
-            // 固定朝上的车辆箭头，不随地图旋转。
+            // 北向上地图中，车辆箭头按实际航向旋转。
+            canvas.save()
+            canvas.rotate(effectiveBearing(state), vehicleScreenX, vehicleScreenY)
             val arrow = Path().apply {
                 moveTo(vehicleScreenX, vehicleScreenY - 34f)
                 lineTo(vehicleScreenX - 24f, vehicleScreenY + 25f)
@@ -221,6 +216,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             })
             canvas.drawCircle(vehicleScreenX, vehicleScreenY, 7f,
                 Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(30, 110, 245) })
+            canvas.restore()
             drawGuidanceCard(canvas, state)
             drawLocationStatus(canvas, state, now)
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
