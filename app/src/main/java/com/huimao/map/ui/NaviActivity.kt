@@ -116,7 +116,8 @@ class NaviActivity : Activity() {
             // 只在主线程延迟读取当前真正可见的文字控件；不修改导航 View 或 SDK 状态。
             runOnUiThread {
                 guideRootView?.postDelayed({
-                    syncVisibleGuidePanelToCar(iconName, roadName)
+                    runCatching { syncVisibleGuidePanelToCar(iconName, roadName) }
+                        .onFailure { Log.w(TAG, "Visible guide panel sync skipped", it) }
                 }, 100L)
             }
         }

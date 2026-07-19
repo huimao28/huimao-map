@@ -699,7 +699,7 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
                                 color = MaterialTheme.colorScheme.errorContainer
                             ) {
                                 Text(
-                                    "注意：在百度平台注册 AK 时，必须使用 Release SHA1\n8C:AC:18:E5:8E:37:AC:E0:92:31:9B:B2:59:EB:51:3A:6E:4D:93:24",
+                                    "注意：在百度平台注册 AK 时，必须使用 Release SHA1\nDE:FF:00:C2:E1:8A:20:62:9C:4A:17:67:B7:27:A5:08:CC:1B:F0:E4",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onErrorContainer,
                                     modifier = Modifier.padding(8.dp),
@@ -1288,7 +1288,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                         ListItem(
                             headlineContent = { Text("Release SHA1") },
-                            supportingContent = { Text("8C:AC:18:E5:8E:37:AC:E0:92:31:9B:B2:59:EB:51:3A:6E:4D:93:24", fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, style = MaterialTheme.typography.labelSmall) },
+                            supportingContent = { Text("DE:FF:00:C2:E1:8A:20:62:9C:4A:17:67:B7:27:A5:08:CC:1B:F0:E4", fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, style = MaterialTheme.typography.labelSmall) },
                             leadingContent = { Icon(Icons.Default.Fingerprint, null) }
                         )
                     }
