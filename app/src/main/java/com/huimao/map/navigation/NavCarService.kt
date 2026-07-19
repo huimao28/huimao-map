@@ -163,7 +163,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         val surface = carSurface ?: return
         if (!surface.isValid || surfaceWidth <= 0 || surfaceHeight <= 0) return
         val state = CarNavigationBridge.state
-        val zoom = 18
+        val zoom = 20
         val now = System.currentTimeMillis()
         val centerBd = navigationCenter(state, now) ?: state.routePoints.firstOrNull() ?: return
         val centerPx = baiduWorldPixel(centerBd.first, centerBd.second, zoom)
