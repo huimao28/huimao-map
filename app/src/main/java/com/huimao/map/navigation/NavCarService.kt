@@ -163,10 +163,11 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         val surface = carSurface ?: return
         if (!surface.isValid || surfaceWidth <= 0 || surfaceHeight <= 0) return
         val state = CarNavigationBridge.state
-        val zoom = 18
+        val zoom = 20
         val now = System.currentTimeMillis()
         val centerBd = navigationCenter(state, now) ?: state.routePoints.firstOrNull() ?: return
         val centerPx = baiduWorldPixel(centerBd.first, centerBd.second, zoom)
+        val routeShift = routeAlignmentShift(state.routePoints, state, zoom)
         val vehicleScreenX = surfaceWidth * 0.50f
         val vehicleScreenY = surfaceHeight * 0.68f
         val originX = centerPx.first - vehicleScreenX
@@ -192,8 +193,8 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             var hasPath = false
             state.routePoints.forEach { bd ->
                 val px = baiduWorldPixel(bd.first, bd.second, zoom)
-                val sx = (px.first - originX).toFloat()
-                val sy = (px.second - originY).toFloat()
+                val sx = (px.first - originX + routeShift.first).toFloat()
+                val sy = (px.second - originY + routeShift.second).toFloat()
                 if (!hasPath) { path.moveTo(sx, sy); hasPath = true } else path.lineTo(sx, sy)
             }
             if (hasPath) {
@@ -267,6 +268,27 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         return ((Math.toDegrees(kotlin.math.atan2(y, x)) + 360.0) % 360.0).toFloat()
     }
 
+    private fun routeAlignmentShift(
+        route: List<Pair<Double, Double>>,
+        state: CarNavigationState,
+        zoom: Int
+    ): Pair<Double, Double> {
+        if (route.isEmpty() || state.latitude == 0.0 || state.longitude == 0.0) return 0.0 to 0.0
+        val locationPx = baiduWorldPixel(state.latitude, state.longitude, zoom)
+        val nearest = route.minByOrNull { point ->
+            val px = baiduWorldPixel(point.first, point.second, zoom)
+            val dx = px.first - locationPx.first
+            val dy = px.second - locationPx.second
+            dx * dx + dy * dy
+        } ?: return 0.0 to 0.0
+        val nearestPx = baiduWorldPixel(nearest.first, nearest.second, zoom)
+        val dx = locationPx.first - nearestPx.first
+        val dy = locationPx.second - nearestPx.second
+        // 仅修正显示层整体平移，不修改原始路线；超过 300px 说明路线/定位
+        // 可能不是同一条路线，保留原始显示避免跳到错误道路。
+        return if (kotlin.math.hypot(dx, dy) <= 300.0) dx to dy else 0.0 to 0.0
+    }
+
     private fun drawScaleBar(canvas: Canvas, latitude: Double, zoom: Int) {
         // 百度瓦片不是标准 WebMercator 缩放定义。直接在百度墨卡托中取当前位置和
         // 向东 50 米的点，转换成同级世界像素，得到真实的 50 米屏幕长度。
@@ -276,7 +298,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         val start = baiduWorldPixel(latitude, centerLng, zoom)
         val end = baiduWorldPixel(latitude, centerLng + deltaLng, zoom)
         val width = kotlin.math.abs(end.first - start.first).toFloat()
-            .coerceIn(80f, surfaceWidth * 0.55f)
+            .coerceIn(120f, surfaceWidth * 0.55f)
         val left = 28f
         val bottom = surfaceHeight - 34f
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
