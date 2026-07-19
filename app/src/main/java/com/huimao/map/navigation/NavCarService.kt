@@ -163,7 +163,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         val surface = carSurface ?: return
         if (!surface.isValid || surfaceWidth <= 0 || surfaceHeight <= 0) return
         val state = CarNavigationBridge.state
-        val zoom = 20
+        val zoom = 18
         val now = System.currentTimeMillis()
         val centerBd = navigationCenter(state, now) ?: state.routePoints.firstOrNull() ?: return
         val centerPx = baiduWorldPixel(centerBd.first, centerBd.second, zoom)
@@ -268,8 +268,15 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     }
 
     private fun drawScaleBar(canvas: Canvas, latitude: Double, zoom: Int) {
-        val metersPerPixel = 156543.03392 * cos(Math.toRadians(latitude)) / 2.0.pow(zoom)
-        val width = (50.0 / metersPerPixel).toFloat().coerceIn(80f, surfaceWidth * 0.32f)
+        // 百度瓦片不是标准 WebMercator 缩放定义。直接在百度墨卡托中取当前位置和
+        // 向东 50 米的点，转换成同级世界像素，得到真实的 50 米屏幕长度。
+        val earth = 6378137.0
+        val deltaLng = Math.toDegrees(50.0 / (earth * cos(Math.toRadians(latitude)).coerceAtLeast(0.2)))
+        val centerLng = CarNavigationBridge.state.longitude.takeIf { it != 0.0 } ?: return
+        val start = baiduWorldPixel(latitude, centerLng, zoom)
+        val end = baiduWorldPixel(latitude, centerLng + deltaLng, zoom)
+        val width = kotlin.math.abs(end.first - start.first).toFloat()
+            .coerceIn(80f, surfaceWidth * 0.55f)
         val left = 28f
         val bottom = surfaceHeight - 34f
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
