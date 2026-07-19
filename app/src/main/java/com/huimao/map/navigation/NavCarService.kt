@@ -163,7 +163,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         val surface = carSurface ?: return
         if (!surface.isValid || surfaceWidth <= 0 || surfaceHeight <= 0) return
         val state = CarNavigationBridge.state
-        val zoom = 15
+        val zoom = 18
         val now = System.currentTimeMillis()
         val centerBd = navigationCenter(state, now) ?: state.routePoints.firstOrNull() ?: return
         val centerPx = baiduWorldPixel(centerBd.first, centerBd.second, zoom)
@@ -219,6 +219,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             canvas.restore()
             drawGuidanceCard(canvas, state)
             drawLocationStatus(canvas, state, now)
+            drawScaleBar(canvas, centerBd.first, zoom)
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE; textSize = 20f; alpha = 190
                 canvas.drawText("© Baidu Maps", 18f, surfaceHeight - 18f, this)
@@ -264,6 +265,29 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             kotlin.math.sin(Math.toRadians(a.first)) * kotlin.math.cos(Math.toRadians(b.first)) *
             kotlin.math.cos(Math.toRadians(b.second - a.second))
         return ((Math.toDegrees(kotlin.math.atan2(y, x)) + 360.0) % 360.0).toFloat()
+    }
+
+    private fun drawScaleBar(canvas: Canvas, latitude: Double, zoom: Int) {
+        val metersPerPixel = 156543.03392 * cos(Math.toRadians(latitude)) / 2.0.pow(zoom)
+        val width = (50.0 / metersPerPixel).toFloat().coerceIn(80f, surfaceWidth * 0.32f)
+        val left = 28f
+        val bottom = surfaceHeight - 34f
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            strokeWidth = 4f
+            style = Paint.Style.STROKE
+            setShadowLayer(3f, 0f, 1f, Color.BLACK)
+        }
+        canvas.drawLine(left, bottom, left + width, bottom, paint)
+        canvas.drawLine(left, bottom - 8f, left, bottom + 8f, paint)
+        canvas.drawLine(left + width, bottom - 8f, left + width, bottom + 8f, paint)
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 22f
+            style = Paint.Style.FILL
+            setShadowLayer(3f, 0f, 1f, Color.BLACK)
+            canvas.drawText("50 m", left, bottom - 13f, this)
+        }
     }
 
     private fun drawGuidanceCard(canvas: Canvas, state: CarNavigationState) {
