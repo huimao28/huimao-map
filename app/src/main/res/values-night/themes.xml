@@ -9,6 +9,10 @@
     <style name="Theme.BaiduNaviAuto.NaviActivity" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
+        <!-- 仅修改窗口底色和状态栏颜色，不改变百度导航 View 的布局或 Insets。 -->
+        <item name="android:windowBackground">#16191D</item>
+        <item name="android:statusBarColor">#16191D</item>
+        <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:forceDarkAllowed">false</item>
         <item name="android:colorAccent">#2196F3</item>

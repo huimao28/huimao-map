@@ -7,6 +7,11 @@
     <style name="Theme.BaiduNaviAuto.NaviActivity" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
+        <!-- 百度导航 View 会为刘海/状态栏安全区保留顶部区域；用与指引面板一致的深色
+             填充该区域，不改变 View 高度和 Insets，避免再次破坏原生导航布局。 -->
+        <item name="android:windowBackground">#1F2937</item>
+        <item name="android:statusBarColor">#1F2937</item>
+        <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:forceDarkAllowed">false</item>
         <item name="android:colorAccent">#2196F3</item>
