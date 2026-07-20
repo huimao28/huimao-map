@@ -746,6 +746,9 @@ class NaviActivity : Activity() {
             if (view == null) { showError("❌ 百度导航界面初始化失败：onCreate 返回 null"); return }
             guideCreated = true
             guideRootView = view
+            // 百度导航根 View 在刘海/安全区可能露出自身默认白底。仅替换根背景，
+            // 不改变 View 尺寸、Insets、系统栏或任何子控件布局。
+            view.setBackgroundColor(0xFF1F2937.toInt())
             CarNavigationBridge.start(destName)
             // 部分 SDK 版本在 MSG_NAVI_ROUTE_PLAN_SUCCESS 时路线几何尚未填充完整，
             // 导航 View 创建后再同步一次，避免车机永远停在“正在加载路线地图”。
