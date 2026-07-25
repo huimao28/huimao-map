@@ -69,6 +69,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     private val tileCache = ConcurrentHashMap<String, android.graphics.Bitmap>()
     private val tileOrder = java.util.concurrent.ConcurrentLinkedQueue<String>()
     private val tilesInFlight = ConcurrentHashMap.newKeySet<String>()
+    private val tileRetryAfterMs = ConcurrentHashMap<String, Long>()
     private val tileExecutor = Executors.newFixedThreadPool(3)
     @Volatile private var tileRenderPending = false
     private val baiduTileUdt = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
@@ -111,6 +112,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
                 // 不主动 recycle：绘制线程可能仍持有 Bitmap，交给 GC 安全回收。
                 tileCache.clear()
                 tileOrder.clear()
+                tileRetryAfterMs.clear()
                 CarNavigationBridge.removeListener(bridgeListener)
                 navigationManager.clearNavigationManagerCallback()
             }
@@ -468,7 +470,8 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         val missing = ArrayList<Triple<Int, Int, String>>()
         for (tx in minX..maxX) for (ty in minY..maxY) {
             val key = "$zoom/$tx/$ty"
-            if (!tileCache.containsKey(key) && tilesInFlight.add(key)) {
+            val retryReady = (tileRetryAfterMs[key] ?: 0L) <= System.currentTimeMillis()
+            if (retryReady && !tileCache.containsKey(key) && tilesInFlight.add(key)) {
                 missing.add(Triple(tx, ty, key))
             }
         }
@@ -483,28 +486,36 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         missing.forEach { (x, y, key) ->
             runCatching {
                 tileExecutor.execute {
+                    var connection: HttpURLConnection? = null
                     try {
                         // Canvas 的 ty 向南递增；百度接口 y 向北递增。
                         val tileY = -y
                         val shard = ((x + y) % 4 + 4) % 4
-                        val connection = URL("https://maponline$shard.bdimg.com/tile/?qt=vtile&x=$x&y=$tileY&z=$zoom&styles=pl&scaler=1&udt=$baiduTileUdt")
+                        connection = URL("https://maponline$shard.bdimg.com/tile/?qt=vtile&x=$x&y=$tileY&z=$zoom&styles=pl&scaler=1&udt=$baiduTileUdt")
                             .openConnection() as HttpURLConnection
                         connection.connectTimeout = 4000
                         connection.readTimeout = 5000
                         connection.setRequestProperty("User-Agent", "BaiduNaviAuto/8.7 AndroidAuto")
+                        val responseCode = connection.responseCode
+                        if (responseCode !in 200..299) throw java.io.IOException("Baidu tile HTTP $responseCode")
                         connection.inputStream.use { input ->
-                            BitmapFactory.decodeStream(input)?.let { bitmap ->
-                                tileCache[key] = bitmap
-                                tileOrder.add(key)
-                                while (tileCache.size > 160) {
-                                    val oldKey = tileOrder.poll() ?: break
-                                    // 只移出缓存，不主动 recycle，避免与 Surface 绘制竞态。
-                                    tileCache.remove(oldKey)
-                                }
+                            val bitmap = BitmapFactory.decodeStream(input)
+                                ?: throw java.io.IOException("Invalid Baidu tile image")
+                            tileCache[key] = bitmap
+                            tileRetryAfterMs.remove(key)
+                            tileOrder.add(key)
+                            while (tileCache.size > 160) {
+                                val oldKey = tileOrder.poll() ?: break
+                                // 只移出缓存，不主动 recycle，避免与 Surface 绘制竞态。
+                                tileCache.remove(oldKey)
                             }
                         }
-                        connection.disconnect()
+                    } catch (e: Throwable) {
+                        // 网络错误属于可恢复故障，不能从线程池逃逸并终止应用。
+                        tileRetryAfterMs[key] = System.currentTimeMillis() + 3000L
+                        android.util.Log.w("NavCarTiles", "Tile $key failed: ${e.message}")
                     } finally {
+                        runCatching { connection?.disconnect() }
                         tilesInFlight.remove(key)
                         scheduleTileRender()
                     }
