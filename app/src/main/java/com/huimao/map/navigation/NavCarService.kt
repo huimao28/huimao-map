@@ -8,6 +8,7 @@ import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.view.Surface
+import android.view.View
 import androidx.car.app.AppManager
 import androidx.car.app.CarAppService
 import androidx.car.app.CarContext
@@ -55,6 +56,8 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     @Volatile private var surfaceHeight = 0
     private var navigationAnnounced = false
     private var miniMapCreated = false
+    private var miniMapView: View? = null
+    private var lastBaiduBitmapAt = 0L
 
     private val frameTicker = object : Runnable {
         override fun run() {
@@ -112,6 +115,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
                     miniMap.openBackgroundDrawNavi(false)
                     miniMap.onDestroy()
                 }
+                miniMapView = null
                 miniMapCreated = false
                 CarNavigationBridge.removeListener(bridgeListener)
                 navigationManager.clearNavigationManagerCallback()
@@ -122,7 +126,8 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     private fun ensureMiniMap() {
         if (miniMapCreated || !CarNavigationBridge.state.navigating) return
         runCatching {
-            miniMap.onCreate(carContext)
+            miniMapView = miniMap.onCreate(carContext)
+            miniMapView?.let { layoutMiniMapView(it) }
             miniMap.touchAble(false)
             miniMap.setNaviMode(IBNMiniMapViewManager.NaviMode.NORMAL)
             miniMap.setMapElementShow(true)
@@ -131,9 +136,21 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             miniMap.openBackgroundDrawNavi(true)
             miniMap.onResume()
             miniMapCreated = true
+            android.util.Log.i("NavCarBaidu", "Baidu background map initialized with offscreen view ${surfaceWidth}x${surfaceHeight}")
         }.onFailure {
             android.util.Log.e("NavCarBaidu", "Baidu background map init failed", it)
         }
+    }
+
+    private fun layoutMiniMapView(view: View) {
+        val width = surfaceWidth.takeIf { it > 0 } ?: 1280
+        val height = surfaceHeight.takeIf { it > 0 } ?: 720
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY)
+        val heightSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+        view.measure(widthSpec, heightSpec)
+        view.layout(0, 0, width, height)
+        runCatching { miniMap.setFullViewMarginSize(0, 0, 0, 0) }
+        runCatching { miniMap.fullView() }
     }
 
     override fun onGetTemplate(): Template {
@@ -183,22 +200,72 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             canvas = surface.lockCanvas(null)
             canvas.drawColor(Color.rgb(28, 35, 42))
             if (bitmap != null && !bitmap.isRecycled && bitmap.width > 0 && bitmap.height > 0) {
+                lastBaiduBitmapAt = System.currentTimeMillis()
                 val src = centerCrop(bitmap.width, bitmap.height, surfaceWidth, surfaceHeight)
                 canvas.drawBitmap(bitmap, src, Rect(0, 0, surfaceWidth, surfaceHeight),
                     Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
             } else {
-                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = Color.WHITE
-                    textSize = 30f
-                    textAlign = Paint.Align.CENTER
-                }
-                canvas.drawText("正在加载百度导航画面…", surfaceWidth / 2f, surfaceHeight / 2f, paint)
+                miniMapView?.let { layoutMiniMapView(it) }
+                drawFallbackNavigation(canvas)
             }
         } catch (e: Throwable) {
             android.util.Log.w("NavCarBaidu", "Baidu frame render failed", e)
         } finally {
             if (canvas != null) runCatching { surface.unlockCanvasAndPost(canvas) }
         }
+    }
+
+    private fun drawFallbackNavigation(canvas: Canvas) {
+        val state = CarNavigationBridge.state
+        val w = surfaceWidth.toFloat()
+        val h = surfaceHeight.toFloat()
+        val routePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(46, 135, 255)
+            strokeWidth = 18f
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        val shadowPaint = Paint(routePaint).apply {
+            color = Color.argb(130, 0, 0, 0)
+            strokeWidth = 28f
+        }
+        val carPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 28f
+            textAlign = Paint.Align.CENTER
+        }
+        val smallPaint = Paint(textPaint).apply { textSize = 22f; color = Color.rgb(190, 205, 215) }
+
+        val path = android.graphics.Path().apply {
+            moveTo(w * 0.50f, h * 0.78f)
+            cubicTo(w * 0.50f, h * 0.62f, w * 0.56f, h * 0.54f, w * 0.60f, h * 0.42f)
+            cubicTo(w * 0.66f, h * 0.27f, w * 0.56f, h * 0.17f, w * 0.50f, h * 0.10f)
+        }
+        canvas.drawPath(path, shadowPaint)
+        canvas.drawPath(path, routePaint)
+
+        canvas.save()
+        canvas.translate(w * 0.50f, h * 0.78f)
+        canvas.rotate(state.bearing.takeIf { it.isFinite() } ?: 0f)
+        val car = android.graphics.Path().apply {
+            moveTo(0f, -32f)
+            lineTo(20f, 26f)
+            lineTo(0f, 14f)
+            lineTo(-20f, 26f)
+            close()
+        }
+        canvas.drawPath(car, carPaint)
+        canvas.restore()
+
+        val status = when {
+            state.inertialNavigation || !state.locationReliable -> "定位弱，车机惯性导航中"
+            lastBaiduBitmapAt == 0L -> "百度导航画面同步中"
+            else -> "百度导航画面恢复中"
+        }
+        canvas.drawText(status, w / 2f, h * 0.47f, textPaint)
+        canvas.drawText(state.instruction.ifBlank { "继续行驶" }, w / 2f, h * 0.54f, smallPaint)
     }
 
     private fun centerCrop(srcW: Int, srcH: Int, dstW: Int, dstH: Int): Rect {

@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
@@ -74,6 +75,8 @@ class NaviActivity : Activity() {
     private var destLat = 0.0
     private var destLng = 0.0
     private var destName = ""
+    private var lastReliableLocationAt = 0L
+    private var lastPushedLocation: BDLocation? = null
 
     private val naviListener = object : IBNaviListener() {
         override fun onNaviGuideEnd() {
@@ -396,7 +399,24 @@ class NaviActivity : Activity() {
         }
         if (!typeOk || loc.latitude == 0.0 || loc.longitude == 0.0) return false
         val radius = loc.radius.takeIf { it.isFinite() && it > 0f } ?: 999f
-        return radius <= 120f
+        if (radius > 120f) return false
+        val previous = lastPushedLocation
+        if (previous != null && previous.latitude != 0.0 && previous.longitude != 0.0) {
+            val distance = FloatArray(1)
+            android.location.Location.distanceBetween(
+                previous.latitude, previous.longitude,
+                loc.latitude, loc.longitude,
+                distance
+            )
+            val elapsedSeconds = ((SystemClock.elapsedRealtime() - lastReliableLocationAt).coerceAtLeast(1L)) / 1000.0
+            val speedMps = (loc.speed.takeIf { it.isFinite() && it >= 0f } ?: 0f) / 3.6f
+            val allowedJump = 80.0 + radius + (speedMps.coerceAtLeast(8f) * elapsedSeconds * 2.5)
+            if (lastReliableLocationAt > 0L && distance[0] > allowedJump) {
+                Log.w(TAG, "Drop jumpy location distance=${distance[0]} allowed=$allowedJump radius=$radius")
+                return false
+            }
+        }
+        return true
     }
 
     private fun markCarLocationLost(loc: BDLocation? = null) {
@@ -411,6 +431,8 @@ class NaviActivity : Activity() {
     }
 
     private fun pushLocationToNaviEngine(bdLoc: BDLocation) {
+        lastReliableLocationAt = SystemClock.elapsedRealtime()
+        lastPushedLocation = BDLocation(bdLoc)
         // Android Auto 自绘路线来自百度地图规划页（BD09LL），车辆位置也必须保持 BD09LL。
         CarNavigationBridge.update {
             it.copy(
