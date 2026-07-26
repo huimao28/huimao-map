@@ -150,7 +150,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         view.measure(widthSpec, heightSpec)
         view.layout(0, 0, width, height)
         runCatching { miniMap.setFullViewMarginSize(0, 0, 0, 0) }
-        runCatching { miniMap.fullView() }
+        runCatching { miniMap.fullView(true) }
     }
 
     override fun onGetTemplate(): Template {
