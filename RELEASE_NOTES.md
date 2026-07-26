@@ -1,8 +1,10 @@
 # 灰猫地图 1.1.0 更新说明
 
-## 重大更新
+## 修复内容
 
 - Android Auto 导航显示层已整体重做，不再使用百度 Web 瓦片和自行换算坐标绘制路线/车标。
+
+## 重大更新
 - 新实现接入百度导航 SDK 官方公开的 `IBNMiniMapViewManager` 后台导航地图接口：
   - `openBackgroundDrawNavi(true)` 开启百度后台导航渲染；
   - `getMapViewBitmap()` 获取百度导航画面；
