@@ -35,6 +35,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.baidu.navisdk.adapter.BaiduNaviManagerFactory
 import com.baidu.navisdk.adapter.IBNMiniMapViewManager
+import java.util.Locale
 import java.util.TimeZone
 
 class NavCarService : CarAppService() {
@@ -199,21 +200,67 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         try {
             canvas = surface.lockCanvas(null)
             canvas.drawColor(Color.rgb(28, 35, 42))
-            if (bitmap != null && !bitmap.isRecycled && bitmap.width > 0 && bitmap.height > 0) {
+            val phoneFrameFresh = System.currentTimeMillis() - CarNavigationBridge.phoneFrameTimeMs <= 2_000L
+            val drewPhoneFrame = if (phoneFrameFresh) {
+                CarNavigationBridge.drawPhoneFrame(
+                    canvas,
+                    Rect(0, 0, surfaceWidth, surfaceHeight),
+                    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+                )
+            } else false
+            if (!drewPhoneFrame && bitmap != null && !bitmap.isRecycled && bitmap.width > 0 && bitmap.height > 0) {
                 lastBaiduBitmapAt = System.currentTimeMillis()
                 val src = centerCrop(bitmap.width, bitmap.height, surfaceWidth, surfaceHeight)
                 canvas.drawBitmap(bitmap, src, Rect(0, 0, surfaceWidth, surfaceHeight),
                     Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
-            } else {
+            } else if (!drewPhoneFrame) {
                 miniMapView?.let { layoutMiniMapView(it) }
                 drawFallbackNavigation(canvas)
             }
+            drawInstructionCard(canvas)
         } catch (e: Throwable) {
             android.util.Log.w("NavCarBaidu", "Baidu frame render failed", e)
         } finally {
             if (canvas != null) runCatching { surface.unlockCanvasAndPost(canvas) }
         }
     }
+
+    private fun drawInstructionCard(canvas: Canvas) {
+        val state = CarNavigationBridge.state
+        val left = 28f
+        val top = 24f
+        val width = (surfaceWidth * 0.42f).coerceIn(360f, 620f)
+        val height = 118f
+        val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(220, 8, 18, 28) }
+        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(180, 255, 255, 255)
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+        }
+        val title = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 30f
+            textAlign = Paint.Align.LEFT
+            isFakeBoldText = true
+        }
+        val sub = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(205, 220, 230)
+            textSize = 23f
+            textAlign = Paint.Align.LEFT
+        }
+        val r = android.graphics.RectF(left, top, left + width, top + height)
+        canvas.drawRoundRect(r, 18f, 18f, bg)
+        canvas.drawRoundRect(r, 18f, 18f, border)
+        val distance = state.distanceToTurnMeters.takeIf { it > 0 }?.let { formatMeters(it) }
+            ?: formatMeters(state.remainingDistanceMeters.coerceAtLeast(0))
+        val instruction = state.instruction.ifBlank { "继续行驶" }
+        canvas.drawText(distance, left + 24f, top + 42f, title)
+        canvas.drawText(instruction.take(18), left + 24f, top + 82f, sub)
+    }
+
+    private fun formatMeters(meters: Int): String = if (meters >= 1000) {
+        String.format(Locale.US, "%.1f 公里", meters / 1000.0)
+    } else "${meters.coerceAtLeast(0)} 米"
 
     private fun drawFallbackNavigation(canvas: Canvas) {
         val state = CarNavigationBridge.state

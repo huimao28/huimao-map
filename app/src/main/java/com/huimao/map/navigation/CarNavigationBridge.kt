@@ -1,5 +1,9 @@
 package com.huimao.map.navigation
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Rect
 import java.util.concurrent.CopyOnWriteArraySet
 
 data class CarNavigationState(
@@ -28,6 +32,37 @@ object CarNavigationBridge {
         private set
 
     private val listeners = CopyOnWriteArraySet<() -> Unit>()
+    @Volatile private var phoneFrame: Bitmap? = null
+    @Volatile var phoneFrameTimeMs: Long = 0L
+        private set
+
+    @Synchronized
+    fun updatePhoneFrame(source: Bitmap) {
+        val copy = runCatching { source.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull() ?: return
+        val old = phoneFrame
+        phoneFrame = copy
+        phoneFrameTimeMs = System.currentTimeMillis()
+        if (old != null && !old.isRecycled) runCatching { old.recycle() }
+        listeners.forEach { runCatching { it() } }
+    }
+
+    @Synchronized
+    fun drawPhoneFrame(canvas: Canvas, dest: Rect, paint: Paint): Boolean {
+        val frame = phoneFrame ?: return false
+        if (frame.isRecycled || frame.width <= 0 || frame.height <= 0) return false
+        return runCatching {
+            canvas.drawBitmap(frame, null, dest, paint)
+            true
+        }.getOrDefault(false)
+    }
+
+    @Synchronized
+    fun clearPhoneFrame() {
+        val old = phoneFrame
+        phoneFrame = null
+        phoneFrameTimeMs = 0L
+        if (old != null && !old.isRecycled) runCatching { old.recycle() }
+    }
 
     fun update(block: (CarNavigationState) -> CarNavigationState) {
         state = block(state)
@@ -44,7 +79,10 @@ object CarNavigationBridge {
         )
     }
 
-    fun stop() = update { CarNavigationState() }
+    fun stop() = update {
+        clearPhoneFrame()
+        CarNavigationState()
+    }
 
     fun setRoutePoints(points: List<Pair<Double, Double>>) = update { it.copy(routePoints = points) }
 

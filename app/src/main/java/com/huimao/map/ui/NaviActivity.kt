@@ -8,6 +8,8 @@ import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.graphics.Bitmap
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -68,6 +70,10 @@ class NaviActivity : Activity() {
     private var baiduTtsSecretKey = ""
     private var audioManager: AudioManager? = null
     private var audioFocusRequest: AudioFocusRequest? = null
+    private val phoneFrameHandler = Handler(Looper.getMainLooper())
+    @Volatile private var phoneFrameCapturing = false
+    @Volatile private var phoneFrameInFlight = false
+    @Volatile private var lastPhoneFrameAt = 0L
     @Volatile private var ttsReady = false
 
     private var startLat = 0.0
@@ -810,11 +816,81 @@ class NaviActivity : Activity() {
             manager.onStart()
             manager.onResume()
             try { BaiduNaviManagerFactory.getMapManager().onResume() } catch (_: Throwable) {}
+            startPhoneFrameCapture()
             locationClient?.lastKnownLocation?.let { pushLocationToNaviEngine(it) }
             Log.i(TAG, "Baidu native guide attached")
         } catch (e: Throwable) {
             Log.e(TAG, "Native guide create failed", e)
             diagnoseGuideLayout(e)
+        }
+    }
+
+    private fun startPhoneFrameCapture() {
+        if (phoneFrameCapturing) return
+        phoneFrameCapturing = true
+        phoneFrameHandler.post(phoneFrameTicker)
+    }
+
+    private fun stopPhoneFrameCapture() {
+        phoneFrameCapturing = false
+        phoneFrameInFlight = false
+        phoneFrameHandler.removeCallbacks(phoneFrameTicker)
+    }
+
+    private val phoneFrameTicker = object : Runnable {
+        override fun run() {
+            if (!phoneFrameCapturing || closingNavi || !guideCreated) return
+            capturePhoneNavigationFrame()
+            phoneFrameHandler.postDelayed(this, 300L)
+        }
+    }
+
+    private fun capturePhoneNavigationFrame() {
+        val view = guideRootView ?: return
+        if (phoneFrameInFlight || view.width <= 0 || view.height <= 0 || !view.isShown) return
+        if (SystemClock.elapsedRealtime() - lastPhoneFrameAt < 250L) return
+        phoneFrameInFlight = true
+        val maxW = 1280
+        val scale = (maxW.toFloat() / view.width.toFloat()).coerceAtMost(1f)
+        val outW = (view.width * scale).toInt().coerceAtLeast(1)
+        val outH = (view.height * scale).toInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+        val finish: (Boolean) -> Unit = { ok ->
+            phoneFrameInFlight = false
+            if (ok) {
+                lastPhoneFrameAt = SystemClock.elapsedRealtime()
+                CarNavigationBridge.updatePhoneFrame(bitmap)
+            }
+            if (!bitmap.isRecycled) bitmap.recycle()
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val loc = IntArray(2)
+                view.getLocationInWindow(loc)
+                val src = android.graphics.Rect(loc[0], loc[1], loc[0] + view.width, loc[1] + view.height)
+                android.view.PixelCopy.request(window, src, bitmap, { result ->
+                    if (result == android.view.PixelCopy.SUCCESS && scale < 1f) {
+                        val scaled = Bitmap.createScaledBitmap(bitmap, outW, outH, true)
+                        bitmap.recycle()
+                        CarNavigationBridge.updatePhoneFrame(scaled)
+                        scaled.recycle()
+                        phoneFrameInFlight = false
+                        lastPhoneFrameAt = SystemClock.elapsedRealtime()
+                    } else finish(result == android.view.PixelCopy.SUCCESS)
+                }, phoneFrameHandler)
+                return
+            } catch (e: Throwable) {
+                Log.w(TAG, "PixelCopy navigation frame failed; using software draw", e)
+            }
+        }
+        try {
+            val canvas = android.graphics.Canvas(bitmap)
+            canvas.scale(scale, scale)
+            view.draw(canvas)
+            finish(true)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Software navigation frame capture failed", e)
+            finish(false)
         }
     }
 
@@ -851,14 +927,19 @@ class NaviActivity : Activity() {
     override fun onStart() { super.onStart(); if (guideCreated) BaiduNaviManagerFactory.getRouteGuideManager().onStart() }
     override fun onResume() {
         super.onResume()
-        if (guideCreated) BaiduNaviManagerFactory.getRouteGuideManager().onResume()
+        if (guideCreated) {
+            BaiduNaviManagerFactory.getRouteGuideManager().onResume()
+            startPhoneFrameCapture()
+        }
     }
     override fun onPause() {
+        stopPhoneFrameCapture()
         if (guideCreated) BaiduNaviManagerFactory.getRouteGuideManager().onPause()
         super.onPause()
     }
     override fun onStop() { if (guideCreated) BaiduNaviManagerFactory.getRouteGuideManager().onStop(); super.onStop() }
     override fun onDestroy() {
+        stopPhoneFrameCapture()
         try { BaiduNaviManagerFactory.getRoutePlanManager().removeRequestByHandler(routePlanHandler) } catch (_: Throwable) {}
         if (guideCreated) try {
             BaiduNaviManagerFactory.getRouteGuideManager().apply {
