@@ -77,6 +77,7 @@ class NaviActivity : Activity() {
     private var destName = ""
     private var lastReliableLocationAt = 0L
     private var lastPushedLocation: BDLocation? = null
+    private var routeLocationWaitStartedAt = 0L
 
     private val naviListener = object : IBNaviListener() {
         override fun onNaviGuideEnd() {
@@ -485,14 +486,9 @@ class NaviActivity : Activity() {
                         }
                     } catch (e: Throwable) { Log.e(TAG, "Navigation GPS start failed", e) }
                     initSelectedTts()
-                    // 先把 MainActivity 传来的当前位置送入外部定位通道，再发起算路。
-                    // 避免新 LocationClient 首次回调尚未到达时使用 SDK 缓存位置。
-                    if (startLat != 0.0 && startLng != 0.0) {
-                        pushLocationToNaviEngine(BDLocation().apply {
-                            latitude = startLat; longitude = startLng
-                            radius = 10f; locType = BDLocation.TypeNetWorkLocation
-                        })
-                    }
+                    // 启动参数中的起点只作为兜底，不写入导航引擎定位通道。
+                    // 部分手机/车机切换时 MainActivity 会给出跨国缓存点；若把它设为可靠基准，
+                    // 后续真实定位会被防跳点逻辑误杀，最终导致路线规划失败。
                     naviEngineReady = true
                     startRoutePlanWhenLocationReady()
                 }
@@ -511,19 +507,31 @@ class NaviActivity : Activity() {
 
     private fun startRoutePlanWhenLocationReady() {
         if (routePlanStarted || closingNavi) return
-        val loc = if (startLat != 0.0 && startLng != 0.0) {
-            BDLocation().apply { latitude = startLat; longitude = startLng; radius = 10f }
-        } else locationClient?.lastKnownLocation?.takeIf {
-            it.latitude != 0.0 && it.longitude != 0.0
+        val freshLoc = lastPushedLocation?.takeIf {
+            it.latitude != 0.0 && it.longitude != 0.0 &&
+                SystemClock.elapsedRealtime() - lastReliableLocationAt <= 10_000L
         }
+        val fallbackLoc = locationClient?.lastKnownLocation?.takeIf {
+            it.latitude != 0.0 && it.longitude != 0.0
+        } ?: if (startLat != 0.0 && startLng != 0.0) {
+            BDLocation().apply {
+                latitude = startLat
+                longitude = startLng
+                radius = 80f
+                locType = BDLocation.TypeNetWorkLocation
+            }
+        } else null
+        val loc = freshLoc ?: if (routeLocationWaitStartedAt > 0L &&
+            SystemClock.elapsedRealtime() - routeLocationWaitStartedAt >= 5_000L) fallbackLoc else null
         if (loc != null) {
             startLat = loc.latitude
             startLng = loc.longitude
-            pushLocationToNaviEngine(loc)
+            if (freshLoc != null) pushLocationToNaviEngine(loc)
             routePlanStarted = true
             startRoutePlan()
             return
         }
+        if (routeLocationWaitStartedAt == 0L) routeLocationWaitStartedAt = SystemClock.elapsedRealtime()
         if (locationWaitStartedAt == 0L) {
             locationWaitStartedAt = System.currentTimeMillis()
             showWaitingForLocation()
@@ -553,8 +561,11 @@ class NaviActivity : Activity() {
         try {
             // 导航适配层会依据 SDKInitializer.getCoordType() 自动转换节点。
             // 全局 CoordType 是 BD09LL，因此这里必须直接传 BD09LL，不能预转 GCJ-02。
-            val startBd = if (startLat != 0.0 && startLng != 0.0) BDLocation().apply {
-                latitude = startLat; longitude = startLng
+            val startBd = lastPushedLocation?.takeIf {
+                it.latitude != 0.0 && it.longitude != 0.0 &&
+                    SystemClock.elapsedRealtime() - lastReliableLocationAt <= 10_000L
+            } ?: if (startLat != 0.0 && startLng != 0.0) BDLocation().apply {
+                latitude = startLat; longitude = startLng; radius = 80f; locType = BDLocation.TypeNetWorkLocation
             } else locationClient?.lastKnownLocation
             if (startBd == null) {
                 showError("❌ 当前定位尚未就绪，无法规划导航路线")
