@@ -35,30 +35,34 @@ jobs:
           mkdir -p keystore
           printf '%s' "$HUIMAO_KEYSTORE_BASE64" | base64 --decode > keystore/release.jks
 
-      - name: Build release APKs
+      - name: Build release APKs and AAB
         env:
           HUIMAO_KEYSTORE_PATH: ${{ github.workspace }}/keystore/release.jks
           HUIMAO_KEYSTORE_PASSWORD: ${{ secrets.HUIMAO_KEYSTORE_PASSWORD }}
           HUIMAO_KEY_PASSWORD: ${{ secrets.HUIMAO_KEYSTORE_PASSWORD }}
           HUIMAO_KEY_ALIAS: release
         run: |
-          gradle :app:assembleRelease :redirector:assembleRelease \
+          VERSION=$(grep -m1 'versionName =' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
+          gradle :app:assembleRelease :app:bundleRelease :redirector:assembleRelease \
             -PproxyPackage=com.baidu.BaiduMap -PproxyType=baidu --stacktrace
           mkdir -p release-files
-          cp app/build/outputs/apk/release/app-release.apk release-files/HuimaoMap_${GITHUB_REF_NAME#v}.apk
-          cp "$(find redirector/build/outputs/apk/release -name '*-release.apk' | head -1)" release-files/WeChatRedirect_Baidu_${GITHUB_REF_NAME#v}.apk
+          cp app/build/outputs/apk/release/app-release.apk release-files/HuimaoMap_${VERSION}.apk
+          cp app/build/outputs/bundle/release/app-release.aab release-files/HuimaoMap_${VERSION}.aab
+          cp "$(find redirector/build/outputs/apk/release -name '*-release.apk' | head -1)" release-files/WeChatRedirect_Baidu_${VERSION}.apk
           gradle :redirector:clean :redirector:assembleRelease \
             -PproxyPackage=com.autonavi.minimap -PproxyType=amap --stacktrace
-          cp "$(find redirector/build/outputs/apk/release -name '*-release.apk' | head -1)" release-files/WeChatRedirect_AMap_${GITHUB_REF_NAME#v}.apk
+          cp "$(find redirector/build/outputs/apk/release -name '*-release.apk' | head -1)" release-files/WeChatRedirect_AMap_${VERSION}.apk
           gradle :redirector:clean :redirector:assembleRelease \
             -PproxyPackage=com.tencent.map -PproxyType=tencent --stacktrace
-          cp "$(find redirector/build/outputs/apk/release -name '*-release.apk' | head -1)" release-files/WeChatRedirect_Tencent_${GITHUB_REF_NAME#v}.apk
+          cp "$(find redirector/build/outputs/apk/release -name '*-release.apk' | head -1)" release-files/WeChatRedirect_Tencent_${VERSION}.apk
 
-      - name: Upload APK artifacts
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: HuimaoMap-and-Redirectors
-          path: release-files/*.apk
+          name: HuimaoMap-AAB-APK-and-Redirectors
+          path: |
+            release-files/*.apk
+            release-files/*.aab
 
       - name: Validate release notes
         if: startsWith(github.ref, 'refs/tags/v')
@@ -73,6 +77,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           cp release-files/HuimaoMap_${VERSION}.apk "HuimaoMap_${VERSION}.apk"
+          cp release-files/HuimaoMap_${VERSION}.aab "HuimaoMap_${VERSION}.aab"
           cp release-files/WeChatRedirect_Baidu_${VERSION}.apk "WeChatRedirect_Baidu_${VERSION}.apk"
           cp release-files/WeChatRedirect_AMap_${VERSION}.apk "WeChatRedirect_AMap_${VERSION}.apk"
           cp release-files/WeChatRedirect_Tencent_${VERSION}.apk "WeChatRedirect_Tencent_${VERSION}.apk"
@@ -87,6 +92,7 @@ jobs:
           generate_release_notes: false
           files: |
             HuimaoMap_*.apk
+            HuimaoMap_*.aab
             WeChatRedirect_Baidu_*.apk
             WeChatRedirect_AMap_*.apk
             WeChatRedirect_Tencent_*.apk
