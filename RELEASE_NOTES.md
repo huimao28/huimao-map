@@ -2,6 +2,7 @@
 
 ## 修复内容
 
+- 修复 Google Play 上传 AAB 时的清单校验错误：移除 Android Automotive OS 设备特性 `android.hardware.type.automotive`，保留 Android Auto 的 `com.google.android.gms.car.application` 元数据。
 - 修复 Android Auto 画面仍无法同步手机百度导航的问题：新增手机端百度导航 View 实时截帧同步通道，Android Auto Surface 优先绘制手机导航帧。
 - 修复 Android Auto 左上角路线指引可能不显示的问题：在车机 Surface 内固定叠加路线指引卡片，显示转向距离和当前指令。
 - 保留百度 `IBNMiniMapViewManager` 后台地图作为次级来源；手机截帧不可用时再回退到百度后台位图和本地兜底图。

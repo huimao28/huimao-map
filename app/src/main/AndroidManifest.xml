@@ -36,10 +36,7 @@
     <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
     <uses-permission android:name="androidx.car.app.MAP_TEMPLATES" />
 
-    <!-- 声明支持 Android Auto -->
-    <uses-feature
-        android:name="android.hardware.type.automotive"
-        android:required="false" />
+    <!-- Android Auto 通过 com.google.android.gms.car.application 元数据声明；不要声明 Automotive OS 设备特性。 -->
 
     <application
         android:name=".BaiduNaviApplication"
