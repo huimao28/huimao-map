@@ -2,6 +2,7 @@
 
 ## 修复内容
 
+- 修复 Google Play 要求 target API 35 的上传错误：主应用 `compileSdk`/`targetSdk` 升级到 35，显示版本仍为 `1.1.3`，`versionCode` 提升到 30 以便 Play 接收新包。
 - 修复 Google Play 上传 AAB 时的清单校验错误：移除 Android Automotive OS 设备特性 `android.hardware.type.automotive`，保留 Android Auto 的 `com.google.android.gms.car.application` 元数据。
 - 修复 Android Auto 画面仍无法同步手机百度导航的问题：新增手机端百度导航 View 实时截帧同步通道，Android Auto Surface 优先绘制手机导航帧。
 - 修复 Android Auto 左上角路线指引可能不显示的问题：在车机 Surface 内固定叠加路线指引卡片，显示转向距离和当前指令。
@@ -26,5 +27,5 @@
 
 ## 安装说明
 
-- 主应用版本升级为 `1.1.3`，`versionCode` 为 29，可直接覆盖安装 1.1.2。
+- 主应用版本为 `1.1.3`，`versionCode` 为 30，可直接覆盖安装旧版 1.1.3；Google Play 使用 AAB 上传。
 - 百度 AK 应绑定包名 `com.huimao.map` 和固定 Release SHA-1：`DE:FF:00:C2:E1:8A:20:62:9C:4A:17:67:B7:27:A5:08:CC:1B:F0:E4`。
