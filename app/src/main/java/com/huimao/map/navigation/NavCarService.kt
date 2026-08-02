@@ -74,7 +74,11 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             carSurface = container.surface
             surfaceWidth = container.width
             surfaceHeight = container.height
+            // Android Auto 主机通常是横屏 Surface；重新按车机尺寸布局百度 MiniMap，
+            // 避免沿用手机竖屏导航截图导致画面被裁剪成大色块。
+            miniMapView?.let { layoutMiniMapView(it) }
             ensureMiniMap()
+            miniMapView?.let { layoutMiniMapView(it) }
             renderMap()
             frameHandler.removeCallbacks(frameTicker)
             frameHandler.post(frameTicker)
@@ -200,22 +204,26 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         try {
             canvas = surface.lockCanvas(null)
             canvas.drawColor(Color.rgb(28, 35, 42))
-            val phoneFrameFresh = System.currentTimeMillis() - CarNavigationBridge.phoneFrameTimeMs <= 2_000L
-            val drewPhoneFrame = if (phoneFrameFresh) {
-                CarNavigationBridge.drawPhoneFrame(
-                    canvas,
-                    Rect(0, 0, surfaceWidth, surfaceHeight),
-                    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-                )
-            } else false
-            if (!drewPhoneFrame && bitmap != null && !bitmap.isRecycled && bitmap.width > 0 && bitmap.height > 0) {
+            val mapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+
+            // 车机端优先绘制百度 MiniMap 生成的横向地图图层。
+            // 手机端导航截图只作为兜底，避免竖屏截图在横屏车机上被 center-crop 后只剩大色块。
+            val drewBaiduMap = if (bitmap != null && !bitmap.isRecycled && bitmap.width > 0 && bitmap.height > 0) {
                 lastBaiduBitmapAt = System.currentTimeMillis()
                 val src = centerCrop(bitmap.width, bitmap.height, surfaceWidth, surfaceHeight)
-                canvas.drawBitmap(bitmap, src, Rect(0, 0, surfaceWidth, surfaceHeight),
-                    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
-            } else if (!drewPhoneFrame) {
-                miniMapView?.let { layoutMiniMapView(it) }
-                drawFallbackNavigation(canvas)
+                canvas.drawBitmap(bitmap, src, Rect(0, 0, surfaceWidth, surfaceHeight), mapPaint)
+                true
+            } else false
+
+            if (!drewBaiduMap) {
+                val phoneFrameFresh = System.currentTimeMillis() - CarNavigationBridge.phoneFrameTimeMs <= 2_000L
+                val drewPhoneFrame = if (phoneFrameFresh) {
+                    CarNavigationBridge.drawPhoneFrame(canvas, Rect(0, 0, surfaceWidth, surfaceHeight), mapPaint)
+                } else false
+                if (!drewPhoneFrame) {
+                    miniMapView?.let { layoutMiniMapView(it) }
+                    drawFallbackNavigation(canvas)
+                }
             }
             drawInstructionCard(canvas)
         } catch (e: Throwable) {
