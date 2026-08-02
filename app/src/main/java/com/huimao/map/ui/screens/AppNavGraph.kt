@@ -1103,10 +1103,20 @@ fun SettingsScreen(onBack: () -> Unit) {
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                             )
                             Text(
-                                "SHA1：DE:FF:00:C2:E1:8A:20:62:9C:4A:17:67:B7:27:A5:08:CC:1B:F0:E4",
+                                "GitHub 版 SHA1：DE:FF:00:C2:E1:8A:20:62:9C:4A:17:67:B7:27:A5:08:CC:1B:F0:E4",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                            Text(
+                                "Google Play 版 SHA1：请填写 Play Console → 应用完整性 → 应用签名密钥证书中的 SHA-1",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                "注意：Google Play 版必须使用 App signing certificate，不是 Upload key certificate。两种 SHA1 都加入同一个百度 AK 的安全码。",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
                         }
                     }
