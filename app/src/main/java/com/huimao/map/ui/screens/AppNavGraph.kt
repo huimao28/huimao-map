@@ -1109,7 +1109,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                             )
                             Text(
-                                "Google Play 版 SHA1：请填写 Play Console → 应用完整性 → 应用签名密钥证书中的 SHA-1",
+                                "Google Play 版 SHA1：F6:4B:0C:D1:6D:AF:A3:51:09:BF:7F:9D:21:F3:81:E2:48:FC:DA:5B",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
