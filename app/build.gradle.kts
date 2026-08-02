@@ -11,8 +11,8 @@ android {
         applicationId = "com.huimao.map"
         minSdk = 26
         targetSdk = 35
-        versionCode = 30
-        versionName = "1.1.3"
+        versionCode = 31
+        versionName = "1.1.4-test1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
