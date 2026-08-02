@@ -74,12 +74,12 @@
             </intent-filter>
         </activity>
 
-        <!-- 百度原生导航 Activity：继承普通 Activity + Material 主题（非 AppCompat）
-             不设 screenOrientation，跟随系统方向 -->
+        <!-- 百度原生导航 Activity：固定横屏，便于手机端百度导航图层与 Android Auto 横向画布一致。 -->
         <activity
             android:name=".ui.NaviActivity"
             android:exported="false"
             android:theme="@style/Theme.BaiduNaviAuto.NaviActivity"
+            android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
         <activity
