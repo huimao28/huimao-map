@@ -71,6 +71,8 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <!-- 声明为地图类应用，便于系统/语音助手把导航请求交给灰猫地图。 -->
+                <category android:name="android.intent.category.APP_MAPS" />
             </intent-filter>
         </activity>
 
@@ -93,6 +95,30 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="baidunaviauto" android:host="navigate" />
+            </intent-filter>
+
+            <!--
+              Android Auto / 语音助手 / 第三方 POI 应用下发目的地时使用的导航意图。
+              Car App Library 明确要求：投屏（Android Auto）场景下 NAVIGATE 意图过滤器
+              必须声明在 Activity 上（而不是 CarAppService 上），否则车机端无法把目的地
+              交给本应用，只能一直停留在“请在手机端选择目的地并开始导航”的提示界面。
+              参考：https://developer.android.com/training/cars/apps/navigation
+            -->
+            <intent-filter>
+                <action android:name="androidx.car.app.action.NAVIGATE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="geo" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="geo" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="google.navigation" />
             </intent-filter>
         </activity>
 
