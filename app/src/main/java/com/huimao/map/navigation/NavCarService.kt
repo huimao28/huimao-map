@@ -7,11 +7,13 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Surface
 import android.view.View
 import androidx.car.app.AppManager
 import androidx.car.app.CarAppService
 import androidx.car.app.CarContext
+import androidx.car.app.CarToast
 import androidx.car.app.Screen
 import androidx.car.app.Session
 import androidx.car.app.SurfaceCallback
@@ -35,6 +37,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.baidu.navisdk.adapter.BaiduNaviManagerFactory
 import com.baidu.navisdk.adapter.IBNMiniMapViewManager
+import com.huimao.map.ui.LocationRedirectActivity
 import java.util.Locale
 import java.util.TimeZone
 
@@ -44,7 +47,41 @@ class NavCarService : CarAppService() {
 }
 
 class NavCarSession : Session() {
-    override fun onCreateScreen(intent: Intent): Screen = CarMainScreen(carContext)
+
+    override fun onCreateScreen(intent: Intent): Screen {
+        handleNavigationIntent(intent)
+        return CarMainScreen(carContext)
+    }
+
+    /** 会话已存在时，车机主机会通过 onNewIntent 下发新的导航请求。 */
+    override fun onNewIntent(intent: Intent) {
+        handleNavigationIntent(intent)
+    }
+
+    /**
+     * 处理 Android Auto / 语音助手下发的 [CarContext.ACTION_NAVIGATE]（geo: / google.navigation:）。
+     *
+     * 百度导航引擎只能在手机端 NaviActivity 中初始化，因此这里把目的地转交给
+     * LocationRedirectActivity，由它完成坐标转换并启动导航；导航一旦开始，
+     * CarNavigationBridge 会驱动车机端模板与地图画面。
+     */
+    private fun handleNavigationIntent(intent: Intent) {
+        if (intent.action != CarContext.ACTION_NAVIGATE) return
+        val data = intent.data ?: return
+        val handoff = Intent(Intent.ACTION_VIEW, data)
+            .setClass(carContext, LocationRedirectActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val started = runCatching { carContext.startActivity(handoff) }
+            .onFailure { android.util.Log.e("NavCarBaidu", "navigate intent handoff failed", it) }
+            .isSuccess
+        runCatching {
+            CarToast.makeText(
+                carContext,
+                if (started) "正在手机端规划路线…" else "请解锁手机后重试",
+                CarToast.LENGTH_LONG
+            ).show()
+        }
+    }
 }
 
 class CarMainScreen(carContext: CarContext) : Screen(carContext) {
@@ -59,14 +96,60 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     private var miniMapCreated = false
     private var miniMapView: View? = null
     private var lastBaiduBitmapAt = 0L
+    private var tickerScheduled = false
+    private var pendingInvalidate = false
+    private var lastInvalidateAt = 0L
 
     private val frameTicker = object : Runnable {
         override fun run() {
             if (carSurface?.isValid == true && CarNavigationBridge.state.navigating) {
                 renderMap()
-                frameHandler.postDelayed(this, 250L)
+                frameHandler.postDelayed(this, FRAME_INTERVAL_MS)
+            } else {
+                // 导航还没开始或 Surface 已失效：结束本轮循环，并允许后续状态变化时重启。
+                tickerScheduled = false
             }
         }
+    }
+
+    /**
+     * 车机 Surface 通常在导航开始之前就已就绪，此时 frameTicker 第一次执行就会退出。
+     * 之前的实现只在 onSurfaceAvailable 中 post ticker，导致刷新循环永久停摆，
+     * 车机端表现为黑屏或画面冻结。这里在每次状态变化时确保循环处于运行状态。
+     */
+    private fun ensureFrameTicker() {
+        if (tickerScheduled) return
+        if (carSurface?.isValid != true || !CarNavigationBridge.state.navigating) return
+        tickerScheduled = true
+        frameHandler.removeCallbacks(frameTicker)
+        frameHandler.post(frameTicker)
+    }
+
+    private val invalidateRunnable = Runnable {
+        pendingInvalidate = false
+        lastInvalidateAt = SystemClock.uptimeMillis()
+        invalidate()
+    }
+
+    /**
+     * 车机主机对模板刷新有速率限制，超限会被主机判定为异常应用并断开连接。
+     * 手机端每 300ms 推送一帧画面、每秒回调定位，都会触发 bridgeListener，
+     * 因此把模板刷新限流到 [MIN_INVALIDATE_INTERVAL_MS]；
+     * Surface 上的地图画面仍由 frameTicker 按 [FRAME_INTERVAL_MS] 独立重绘。
+     */
+    private fun scheduleInvalidate() {
+        if (pendingInvalidate) return
+        pendingInvalidate = true
+        val delay = (lastInvalidateAt + MIN_INVALIDATE_INTERVAL_MS - SystemClock.uptimeMillis())
+            .coerceIn(0L, MIN_INVALIDATE_INTERVAL_MS)
+        frameHandler.postDelayed(invalidateRunnable, delay)
+    }
+
+    private fun invalidateNow() {
+        frameHandler.removeCallbacks(invalidateRunnable)
+        pendingInvalidate = false
+        lastInvalidateAt = SystemClock.uptimeMillis()
+        invalidate()
     }
 
     private val surfaceCallback = object : SurfaceCallback {
@@ -81,12 +164,14 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             miniMapView?.let { layoutMiniMapView(it) }
             renderMap()
             frameHandler.removeCallbacks(frameTicker)
-            frameHandler.post(frameTicker)
+            tickerScheduled = false
+            ensureFrameTicker()
         }
 
         override fun onSurfaceDestroyed(container: SurfaceContainer) {
             if (carSurface === container.surface) carSurface = null
             frameHandler.removeCallbacks(frameTicker)
+            tickerScheduled = false
         }
     }
 
@@ -95,7 +180,8 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             publishTrip()
             ensureMiniMap()
             renderMap()
-            invalidate()
+            ensureFrameTicker()
+            scheduleInvalidate()
         }
     }
 
@@ -113,6 +199,9 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onDestroy(owner: LifecycleOwner) {
                 frameHandler.removeCallbacks(frameTicker)
+                frameHandler.removeCallbacks(invalidateRunnable)
+                tickerScheduled = false
+                pendingInvalidate = false
                 appManager.setSurfaceCallback(null)
                 carSurface = null
                 if (miniMapCreated) runCatching {
@@ -166,11 +255,19 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
                 .setHeaderAction(Action.APP_ICON)
                 .build()
         }
-        val step = Step.Builder(state.instruction)
-            .setRoad(state.roadName.ifBlank { state.instruction })
-            .setManeuver(Maneuver.Builder(
+        // 非法/不完整的转向类型（例如环岛缺少出口编号）会让 Maneuver.Builder 抛异常，
+        // 而 onGetTemplate 抛异常会直接导致车机端应用崩溃，这里做兜底。
+        val maneuver = runCatching {
+            Maneuver.Builder(
                 state.maneuverType.takeIf { it != 0 } ?: Maneuver.TYPE_STRAIGHT
-            ).build()).build()
+            ).build()
+        }.getOrElse {
+            android.util.Log.w("NavCarBaidu", "invalid maneuver type ${state.maneuverType}", it)
+            Maneuver.Builder(Maneuver.TYPE_STRAIGHT).build()
+        }
+        val step = Step.Builder(state.instruction.ifBlank { "继续行驶" })
+            .setRoad(state.roadName.ifBlank { state.instruction.ifBlank { "继续行驶" } })
+            .setManeuver(maneuver).build()
         val routingDistance = state.distanceToTurnMeters.takeIf { it > 0 }
             ?: state.remainingDistanceMeters.coerceAtLeast(1)
         val routing = RoutingInfo.Builder()
@@ -186,7 +283,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             CarNavigationBridge.stop()
             runCatching { navigationManager.navigationEnded() }
             navigationAnnounced = false
-            invalidate()
+            invalidateNow()
         }.build()
         return NavigationTemplate.Builder()
             .setNavigationInfo(routing)
@@ -350,4 +447,12 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     private fun displayDistance(meters: Int): Distance = if (meters >= 1000) {
         Distance.create(meters / 1000.0, Distance.UNIT_KILOMETERS_P1)
     } else Distance.create(meters.toDouble(), Distance.UNIT_METERS)
+
+    private companion object {
+        /** 车机地图画面重绘间隔。 */
+        const val FRAME_INTERVAL_MS = 250L
+
+        /** 模板刷新最小间隔，避免触发车机主机的模板速率限制。 */
+        const val MIN_INVALIDATE_INTERVAL_MS = 1_000L
+    }
 }

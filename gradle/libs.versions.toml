@@ -24,6 +24,8 @@ androidx-material3 = { group = "androidx.compose.material3", name = "material3" 
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 androidx-car-app = { group = "androidx.car.app", name = "app", version.ref = "carApp" }
+# Android Auto（投屏）专用实现，官方文档要求与 androidx.car.app:app 一起引入。
+androidx-car-app-projected = { group = "androidx.car.app", name = "app-projected", version.ref = "carApp" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 baidu-search = { group = "com.baidu.lbsyun", name = "BaiduMapSDK_Search", version = "8.1.0" }
 baidu-util = { group = "com.baidu.lbsyun", name = "BaiduMapSDK_Util", version = "8.1.0" }

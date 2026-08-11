@@ -89,6 +89,8 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.car.app)
+    // Android Auto（投屏）专用实现，缺失时车机侧功能不完整。
+    implementation(libs.androidx.car.app.projected)
     implementation(libs.androidx.datastore.preferences)
     // 百度普通 Android 导航 SDK（本地 AAR 开发包，已包含 地图/定位/搜索/导航 全部模块）
     // BaiduLBS_Android.aar = 地图+定位+搜索+工具 all-in-one
