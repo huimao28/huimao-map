@@ -1,12 +1,12 @@
 # 灰猫地图
 
-基于百度地图与百度导航 SDK 的 Android 地图/导航应用，支持 Android Auto 和微信位置转发。
+基于百度地图与百度导航 SDK 的 Android 地图/导航应用，支持微信位置转发，并提供 Wear OS 独立适配模块。Android Auto 当前暂时移除。
 
 ## 功能
 
 - 地图定位与 POI 搜索
 - 驾车路线规划和内置导航
-- Android Auto 路线指引与地图瓦片
+- Wear OS 基础适配（`:wear` 模块）
 - 微信位置代理转发
 - 家、公司和周边快捷入口
 

@@ -17,7 +17,7 @@ import kotlin.math.sqrt
  *
  * 支持三类来源：
  * 1. 微信地图代理转发：`baidunaviauto://navigate?lat=&lng=&name=`，坐标约定为百度 BD09LL；
- * 2. Android Auto / 语音助手下发的导航意图：`androidx.car.app.action.NAVIGATE` + `geo:`；
+ * 2. 第三方地图或语音助手下发的 `geo:` 导航意图；
  * 3. 通用地图意图：`geo:` 与 `google.navigation:`。
  *
  * 注意：只有内部的 `baidunaviauto://` 协议使用 BD09LL；按 Android 平台约定，

@@ -722,24 +722,21 @@ class NaviActivity : Activity() {
         return 0
     }
 
+    // Android Auto 已暂时移除；保留简单的内部转向分类，供手机端状态使用。
     private fun inferCarManeuver(iconName: String, cue: String): Int {
         val text = "$iconName $cue".lowercase()
         return when {
-            "掉头" in text || "u_turn" in text || "uturn" in text -> androidx.car.app.navigation.model.Maneuver.TYPE_U_TURN_LEFT
-            "向左急转" in text || "sharp_left" in text -> androidx.car.app.navigation.model.Maneuver.TYPE_TURN_SHARP_LEFT
-            "向右急转" in text || "sharp_right" in text -> androidx.car.app.navigation.model.Maneuver.TYPE_TURN_SHARP_RIGHT
-            "向左前方" in text || "slight_left" in text -> androidx.car.app.navigation.model.Maneuver.TYPE_TURN_SLIGHT_LEFT
-            "向右前方" in text || "slight_right" in text -> androidx.car.app.navigation.model.Maneuver.TYPE_TURN_SLIGHT_RIGHT
-            "左转" in text || "turn_left" in text -> androidx.car.app.navigation.model.Maneuver.TYPE_TURN_NORMAL_LEFT
-            "右转" in text || "turn_right" in text -> androidx.car.app.navigation.model.Maneuver.TYPE_TURN_NORMAL_RIGHT
-            "靠左" in text || "keep_left" in text -> androidx.car.app.navigation.model.Maneuver.TYPE_KEEP_LEFT
-            "靠右" in text || "keep_right" in text -> androidx.car.app.navigation.model.Maneuver.TYPE_KEEP_RIGHT
-            "出口" in text && "左" in text -> androidx.car.app.navigation.model.Maneuver.TYPE_OFF_RAMP_NORMAL_LEFT
-            "出口" in text || "匝道" in text -> androidx.car.app.navigation.model.Maneuver.TYPE_OFF_RAMP_NORMAL_RIGHT
-            "到达" in text -> androidx.car.app.navigation.model.Maneuver.TYPE_DESTINATION
-            else -> androidx.car.app.navigation.model.Maneuver.TYPE_STRAIGHT
+            "掉头" in text || "u_turn" in text || "uturn" in text -> 7
+            "左转" in text || "turn_left" in text -> 2
+            "右转" in text || "turn_right" in text -> 3
+            "靠左" in text || "keep_left" in text -> 4
+            "靠右" in text || "keep_right" in text -> 5
+            "到达" in text ->  destinationManeuverCode
+            else -> 1
         }
     }
+
+    private val destinationManeuverCode: Int get() = 6
 
     private fun syncRouteGeometryToCar() {
         // 路线规划成功后始终保存百度路线。Android Auto 可能在手机导航开始后才连接，

@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.HuimaoWear" parent="android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#5B8DEF</item>
+    </style>
+</resources>
