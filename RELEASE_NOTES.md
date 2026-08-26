@@ -1,34 +1,29 @@
-# 灰猫地图 1.1.4-test1 测试版说明
+# 灰猫地图 1.1.5
 
 ## 修复内容
 
-- 测试修复 Android Auto 横屏车机页面图层显示问题：车机 Surface 优先绘制百度 MiniMap 横向地图图层。
-- 手机端百度导航截图改为兜底来源，避免竖屏截图在横屏车机上被裁剪后只剩大块色块。
-- Android Auto Surface 可用后按车机宽高重新测量/布局百度 MiniMap。
-- 手机端百度导航 Activity 固定横屏，尽量与车机横屏画布保持一致。
-- API AK 设置页补充 GitHub 版 SHA1 与 Google Play 版 SHA1，便于百度开放平台安全码配置。
+- 暂时移除 Android Auto 集成，避免车机相关实现影响手机端稳定性。
+- 取消百度导航页面的强制横屏，手机端现在遵循系统方向设置。
+- 新增 Wear OS 独立应用模块 `:wear`，提供手表端基础入口和后续导航状态同步基础。
+- 保留微信位置转发插件、百度地图导航和原有手机端功能。
 
-## 技术调整
+## 未修改内容
 
-- Android Auto 渲染顺序调整为：百度后台 MiniMap 横向位图 → 手机导航截帧 → 本地兜底导航图。
-- `NavCarService` 在 Surface attach 后重新 layout MiniMap View，确保图层按车机横向尺寸输出。
-- `NaviActivity` 设置 `screenOrientation="landscape"`，减少手机/车机图层方向不一致。
-
-## 保留修复
-
-- 保留 1.1.3 的 targetSdk 35、Google Play AAB、Android Auto manifest 修复。
-- 保留手机导航帧同步、车机指引卡片、路线规划起点修复和微信位置转发插件。
-- Release 继续同时提供主 APK、Google Play 用 AAB、百度/高德/腾讯三个微信位置转发插件，以及完整源码包。
+- 百度地图 Android AK 配置方式不变。
+- 微信位置转发 APK 仍分别提供百度、高德、腾讯三个版本。
+- 主应用包名仍为 `com.huimao.map`。
+- Wear OS 当前为基础适配版本，尚未接入手机与手表之间的完整导航状态同步。
 
 ## 已知问题
 
-- 这是测试版，重点验证 Android Auto 横屏图层是否能正常显示。
-- 如果百度 MiniMap 后台位图仍为空，车机端会继续回退到手机导航截帧或本地兜底图。
-- Google Play 正式上架前建议继续使用稳定版；本测试版主要用于实车验证。
+- 本版本尚未完成 Gradle 真机发布构建验证，建议安装后重点验证百度地图初始化、路线规划、导航和微信位置转发。
+- Wear OS 模块当前仅提供基础 Compose 页面，“同步手机导航”按钮为占位入口。
+- Android Auto 当前暂时不可用，后续会重新设计后恢复。
+- 百度 SDK 仍需要用户配置有效的 Android AK，并确保包名和签名 SHA-1 匹配。
 
-## 安装说明
+## 安装或升级注意事项
 
-- 主应用版本为 `1.1.4-test1`，`versionCode` 为 31，可覆盖安装 1.1.3。
-- 百度 AK 安全码建议同时绑定：
-  - GitHub 版：`com.huimao.map;DE:FF:00:C2:E1:8A:20:62:9C:4A:17:67:B7:27:A5:08:CC:1B:F0:E4`
-  - Google Play 版：`com.huimao.map;F6:4B:0C:D1:6D:AF:A3:51:09:BF:7F:9D:21:F3:81:E2:48:FC:DA:5B`
+- 主应用版本为 `1.1.5`，`versionCode` 为 32，可覆盖安装之前使用相同签名的版本。
+- 如果之前安装过 Android Auto 相关版本，升级前建议先结束正在运行的导航并重新启动应用。
+- 微信位置转发代理 APK 与对应官方地图使用相同包名，不能与对应官方地图同时安装；请选择一个不冲突的版本。
+- Wear OS 应用需要单独构建和安装 `:wear` 模块，当前不会自动替换手机端主应用。
