@@ -27,6 +27,11 @@ jobs:
         with:
           gradle-version: 8.11.1
 
+      - name: Install Android 17 SDK platform
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-37"
+
       - name: Restore fixed release keystore
         env:
           HUIMAO_KEYSTORE_BASE64: ${{ secrets.HUIMAO_KEYSTORE_BASE64 }}
