@@ -8,7 +8,8 @@ composeBom = "2024.04.01"
 navigationCompose = "2.7.7"
 # Android Auto 暂时移除，待后续重新设计
 datastore = "1.0.0"
-wearCompose = "1.7.0-beta02"
+# 最新稳定版，兼容当前 Android Gradle Plugin
+wearCompose = "1.6.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
