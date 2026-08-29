@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -50,9 +51,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.11"
-    }
+    // Compose Compiler 由 Kotlin Compose Gradle Plugin 管理
 
     kotlinOptions {
         jvmTarget = "11"
