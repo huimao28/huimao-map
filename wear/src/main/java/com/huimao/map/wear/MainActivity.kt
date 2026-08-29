@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.wear.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,12 +35,14 @@ import androidx.compose.material.icons.filled.ArrowBack
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { WearNavigationScreen() }
+        val viewModel = WearNavigationViewModel(applicationContext)
+        setContent { WearNavigationScreen(viewModel) }
     }
 }
 
 @Composable
-private fun WearNavigationScreen() {
+private fun WearNavigationScreen(viewModel: WearNavigationViewModel) {
+    val state by viewModel.state.collectAsState()
     WearMaterialTheme {
         AppScaffold {
             ScreenScaffold(
@@ -51,7 +55,7 @@ private fun WearNavigationScreen() {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("灰猫地图", fontSize = 12.sp, color = WearMaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (state.navigating) "灰猫地图" else "等待手机导航", fontSize = 12.sp, color = WearMaterialTheme.colorScheme.onSurfaceVariant)
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
                             modifier = Modifier.size(76.dp).background(WearMaterialTheme.colorScheme.primary, CircleShape),
@@ -59,13 +63,13 @@ private fun WearNavigationScreen() {
                         ) {
                             Icon(Icons.Default.ArrowBack, contentDescription = "左转", tint = WearMaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(48.dp))
                         }
-                        Text("向左转", fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
-                        Text("150 米后", fontSize = 18.sp, color = WearMaterialTheme.colorScheme.primary)
+                        Text(if (state.navigating) state.instruction else "请在手机上开始导航", fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
+                        Text(if (state.navigating) "${state.distanceToTurnMeters} 米后" else "等待手机连接", fontSize = 18.sp, color = WearMaterialTheme.colorScheme.primary)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("当前道路", fontSize = 11.sp, color = WearMaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("东环路", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(state.roadName.ifBlank { "等待手机" }, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("剩余", fontSize = 11.sp, color = WearMaterialTheme.colorScheme.onSurfaceVariant)
