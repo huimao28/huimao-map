@@ -12,8 +12,28 @@ android {
         applicationId = "com.huimao.map.wear"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 33
+        versionName = "1.1.6"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file(System.getenv("HUIMAO_KEYSTORE_PATH") ?: "../keystore/release.jks")
+            storePassword = System.getenv("HUIMAO_KEYSTORE_PASSWORD")
+                ?: providers.gradleProperty("HUIMAO_KEYSTORE_PASSWORD").orNull
+                ?: error("Missing HUIMAO_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("HUIMAO_KEY_ALIAS") ?: "release"
+            keyPassword = System.getenv("HUIMAO_KEY_PASSWORD")
+                ?: providers.gradleProperty("HUIMAO_KEY_PASSWORD").orNull
+                ?: storePassword
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+        }
     }
 
     compileOptions {

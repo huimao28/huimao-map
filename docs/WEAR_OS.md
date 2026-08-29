@@ -1,6 +1,6 @@
 # Wear OS 适配
 
-Wear OS 目前提供独立的 `:wear` 应用模块，首版包含：
+Wear OS 目前提供独立的 `:wear` 应用模块，并会随 Release 构建输出 `HuimaoMap_Wear_<版本>.apk`。当前版本包含：
 
 - 手表设备声明与独立 applicationId：`com.huimao.map.wear`
 - Compose 基础界面
