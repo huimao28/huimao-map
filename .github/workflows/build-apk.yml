@@ -28,13 +28,10 @@ jobs:
           gradle-version: 8.11.1
 
       - name: Set up Android SDK 37
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android 17 SDK platform
-        run: |
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-37" "build-tools;35.0.0"
+        uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: 14742923
+          packages: 'platform-tools platforms;android-37 build-tools;35.0.0'
 
       - name: Restore fixed release keystore
         env:
