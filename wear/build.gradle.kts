@@ -5,13 +5,13 @@ plugins {
 
 android {
     namespace = "com.huimao.map.wear"
-    // Android 17 / API 37
-    compileSdk = 37
+    // 当前公开工具链可用的最高稳定 SDK；兼容后续系统运行。
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.huimao.map.wear"
         minSdk = 26
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
     }

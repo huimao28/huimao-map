@@ -5,14 +5,14 @@ plugins {
 
 android {
     namespace = "com.huimao.redirector"
-    // Android 17 / API 37
-    compileSdk = 37
+    // 当前公开工具链可用的最高稳定 SDK。
+    compileSdk = 36
 
     defaultConfig {
         applicationId = (project.findProperty("proxyPackage") as String?) ?: "com.tencent.map"
         minSdk = 23
         // 保持低 targetSdk 以兼容微信对官方地图包名的旧式转发行为；
-        // compileSdk 37 确保可在 Android 17 工具链中构建。
+        // compileSdk 36 使用当前公开稳定工具链，并保持后续 Android 版本运行兼容。
         targetSdk = 28
         versionCode = 25
         versionName = "3.4-huimao-map"
