@@ -5,12 +5,13 @@ plugins {
 
 android {
     namespace = "com.huimao.map.wear"
-    compileSdk = 35
+    // Android 17 / API 37
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.huimao.map.wear"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
     }

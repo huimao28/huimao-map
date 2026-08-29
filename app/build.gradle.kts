@@ -5,14 +5,15 @@ plugins {
 
 android {
     namespace = "com.huimao.map"
-    compileSdk = 35
+    // Android 17 / API 37
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.huimao.map"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 32
-        versionName = "1.1.5"
+        targetSdk = 37
+        versionCode = 33
+        versionName = "1.1.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {

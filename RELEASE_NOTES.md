@@ -2,6 +2,11 @@
 
 ## 修复内容
 
+- 继续保留 Android Auto 暂时移除和导航页取消强制横屏。
+- 新增 Android 17（API 37）compileSdk/targetSdk 配置。
+- 将主应用版本代码提升至 33，避免 Google Play 拒绝重复的 versionCode 32。
+- 为主应用和微信转发器保留原 release keystore 与 `release` alias，确保可覆盖升级。
+
 - 暂时移除 Android Auto 集成，避免车机相关实现影响手机端稳定性。
 - 取消百度导航页面的强制横屏，手机端现在遵循系统方向设置。
 - 新增 Wear OS 独立应用模块 `:wear`，提供手表端基础入口和后续导航状态同步基础。
