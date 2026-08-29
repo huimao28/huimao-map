@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.wear.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.wear.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,10 +40,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun WearNavigationScreen() {
     WearMaterialTheme {
-        AppScaffold(timeText = { TimeText() }) {
-            ScreenScaffold(scrollState = null, contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp)) {
+        AppScaffold {
+            ScreenScaffold(
+                scrollState = androidx.compose.foundation.ScrollState(0),
+                timeText = { TimeText() },
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp)
+            ) { contentPadding ->
                 Column(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().padding(contentPadding),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
