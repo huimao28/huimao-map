@@ -49,12 +49,13 @@ jobs:
           HUIMAO_KEY_ALIAS: release
         run: |
           VERSION=$(grep -m1 'versionName =' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
-          gradle :app:assembleRelease :app:bundleRelease :redirector:assembleRelease :wear:assembleRelease \
+          gradle :app:assembleRelease :app:bundleRelease :redirector:assembleRelease :wear:assembleRelease :wear:bundleRelease \
             -PproxyPackage=com.baidu.BaiduMap -PproxyType=baidu --stacktrace
           mkdir -p release-files
           cp app/build/outputs/apk/release/app-release.apk release-files/HuimaoMap_${VERSION}.apk
           cp app/build/outputs/bundle/release/app-release.aab release-files/HuimaoMap_${VERSION}.aab
           cp wear/build/outputs/apk/release/wear-release.apk release-files/HuimaoMap_Wear_${VERSION}.apk
+          cp wear/build/outputs/bundle/release/wear-release.aab release-files/HuimaoMap_Wear_${VERSION}.aab
           cp "$(find redirector/build/outputs/apk/release -name '*-release.apk' | head -1)" release-files/WeChatRedirect_Baidu_${VERSION}.apk
           gradle :redirector:clean :redirector:assembleRelease \
             -PproxyPackage=com.autonavi.minimap -PproxyType=amap --stacktrace
@@ -86,6 +87,7 @@ jobs:
           cp release-files/HuimaoMap_${VERSION}.apk "HuimaoMap_${VERSION}.apk"
           cp release-files/HuimaoMap_${VERSION}.aab "HuimaoMap_${VERSION}.aab"
           cp release-files/HuimaoMap_Wear_${VERSION}.apk "HuimaoMap_Wear_${VERSION}.apk"
+          cp release-files/HuimaoMap_Wear_${VERSION}.aab "HuimaoMap_Wear_${VERSION}.aab"
           cp release-files/WeChatRedirect_Baidu_${VERSION}.apk "WeChatRedirect_Baidu_${VERSION}.apk"
           cp release-files/WeChatRedirect_AMap_${VERSION}.apk "WeChatRedirect_AMap_${VERSION}.apk"
           cp release-files/WeChatRedirect_Tencent_${VERSION}.apk "WeChatRedirect_Tencent_${VERSION}.apk"

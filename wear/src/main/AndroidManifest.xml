@@ -9,6 +9,10 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:allowBackup="false">
+        <!-- 本应用是手机端灰猫地图的 Wear OS 附属版本。 -->
+        <meta-data
+            android:name="com.google.android.wearable.standalone"
+            android:value="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true">
