@@ -20,6 +20,7 @@ import com.huimao.map.data.AppSettingsKeys
 import com.huimao.map.data.dataStore
 import com.huimao.map.map.BaiduMapManager
 import com.huimao.map.model.LatLng
+import com.huimao.map.navigation.CarNavigationBridge
 import com.huimao.map.ui.screens.AppNavGraph
 import com.huimao.map.ui.screens.NavViewModel
 import com.huimao.map.ui.theme.BaiduNaviTheme
@@ -54,6 +55,8 @@ class MainActivity : ComponentActivity() {
 
         // 隐私合规（冗余调用，Application 中已调用，此处保险起见再调一次）
         LocationClient.setAgreePrivacy(true)
+        // 初始化手机—手表 Data Layer；无手表或未连接时不影响手机导航。
+        CarNavigationBridge.initialize(applicationContext)
 
         setContent {
             BaiduNaviTheme(

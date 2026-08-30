@@ -31,7 +31,20 @@ object CarNavigationBridge {
     @Volatile var state: CarNavigationState = CarNavigationState()
         private set
 
+    @Volatile private var appContext: android.content.Context? = null
     private val listeners = CopyOnWriteArraySet<() -> Unit>()
+
+    fun initialize(context: android.content.Context) {
+        appContext = context.applicationContext
+        WearNavigationSync.initialize(context)
+        publish()
+    }
+
+    private fun publish() {
+        val context = appContext ?: return
+        WearNavigationSync.publish(context, state)
+            .addOnFailureListener { /* 手表未连接时静默处理，连接后下一次状态更新会重试 */ }
+    }
     @Volatile private var phoneFrame: Bitmap? = null
     @Volatile var phoneFrameTimeMs: Long = 0L
         private set
@@ -66,6 +79,7 @@ object CarNavigationBridge {
 
     fun update(block: (CarNavigationState) -> CarNavigationState) {
         state = block(state)
+        publish()
         listeners.forEach { runCatching { it() } }
     }
 

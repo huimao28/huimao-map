@@ -100,6 +100,8 @@ dependencies {
     implementation(libs.androidx.cardview)
     implementation(libs.androidx.recyclerview)
     implementation(libs.androidx.appcompat)
+    // 手机端通过 Google Play services Wearable Data Layer 向手表同步导航状态。
+    implementation(libs.play.services.wearable)
     // 百度定位 SDK 9.6.4 内部依赖 OkHttp3（pom 未声明，需手动添加）
     implementation(libs.okhttp3)
     implementation(libs.okhttp3.logging)
