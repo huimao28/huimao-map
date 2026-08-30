@@ -25,15 +25,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Button
-import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme as WearMaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.DirectionsWalk
-import androidx.compose.material.icons.filled.PhoneAndroid
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,12 +63,12 @@ private fun WaitingPage(connected: Boolean, onRetry: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(Icons.Default.DirectionsWalk, contentDescription = null, tint = WearMaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
+            Text("●", fontSize = 30.sp, color = WearMaterialTheme.colorScheme.primary)
             Text("请在手机端开始导航", fontSize = 21.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 12.dp))
             Text(if (connected) "等待导航信息同步" else "请先连接手机", fontSize = 14.sp, textAlign = TextAlign.Center, color = WearMaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
             if (!connected) {
                 Button(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) {
-                    Icon(Icons.Default.PhoneAndroid, contentDescription = null)
+                    Text("手机", fontSize = 12.sp, color = WearMaterialTheme.colorScheme.primary)
                     Text("检查连接")
                 }
             }
