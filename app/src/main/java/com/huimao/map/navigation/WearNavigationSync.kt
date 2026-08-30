@@ -32,19 +32,18 @@ object WearNavigationSync {
 
     fun publish(context: Context, state: CarNavigationState): Task<*> {
         initialize(context)
-        val map = DataMap().apply {
-            putBoolean(KEY_NAVIGATING, state.navigating)
-            putString(KEY_INSTRUCTION, state.instruction)
-            putInt(KEY_MANEUVER, state.maneuverType)
-            putInt(KEY_TURN_DISTANCE, state.distanceToTurnMeters.coerceAtLeast(0))
-            putInt(KEY_REMAINING_DISTANCE, state.remainingDistanceMeters.coerceAtLeast(0))
-            putInt(KEY_REMAINING_TIME, state.remainingTimeSeconds.coerceAtLeast(0))
-            putInt(KEY_SPEED, state.speedKmh.coerceAtLeast(0))
-            putString(KEY_ROAD, state.roadName)
-            putString(KEY_DESTINATION, state.destinationName)
-            putLong(KEY_UPDATED_AT, sequence.incrementAndGet())
-        }
-        val request = PutDataMapRequest.create(PATH).apply { dataMap = map }.asPutDataRequest().setUrgent()
+        val request = PutDataMapRequest.create(PATH).apply {
+            dataMap.putBoolean(KEY_NAVIGATING, state.navigating)
+            dataMap.putString(KEY_INSTRUCTION, state.instruction)
+            dataMap.putInt(KEY_MANEUVER, state.maneuverType)
+            dataMap.putInt(KEY_TURN_DISTANCE, state.distanceToTurnMeters.coerceAtLeast(0))
+            dataMap.putInt(KEY_REMAINING_DISTANCE, state.remainingDistanceMeters.coerceAtLeast(0))
+            dataMap.putInt(KEY_REMAINING_TIME, state.remainingTimeSeconds.coerceAtLeast(0))
+            dataMap.putInt(KEY_SPEED, state.speedKmh.coerceAtLeast(0))
+            dataMap.putString(KEY_ROAD, state.roadName)
+            dataMap.putString(KEY_DESTINATION, state.destinationName)
+            dataMap.putLong(KEY_UPDATED_AT, sequence.incrementAndGet())
+        }.asPutDataRequest().setUrgent()
         return dataClient!!.putDataItem(request)
     }
 }
