@@ -54,7 +54,7 @@ Google Play 当前提供的是封闭测试版本，需要先加入测试计划�
 
 GitHub Releases 提供测试包、尚未上架版本以及微信位置转发插件：
 
-[![GitHub Releases](https://img.shields.io/badge/下载-GitHub%20Releases-181717?logo=github&logoColor=white)](https://github.com/huimao28/huimao-map/releases)
+[![Get it on GitHub](docs/assets/github-download-badge.png)](https://github.com/huimao28/huimao-map/releases)
 
 - `HuimaoMap_<版本>.apk`：手机端安装包
 - `HuimaoMap_<版本>.aab`：Google Play 上传包

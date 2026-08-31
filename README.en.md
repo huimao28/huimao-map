@@ -54,7 +54,7 @@ Google Play currently provides the closed-testing version. Join the testing prog
 
 GitHub Releases provides test packages, unreleased versions, and the WeChat location redirection plugins:
 
-[![GitHub Releases](https://img.shields.io/badge/Download-GitHub%20Releases-181717?logo=github&logoColor=white)](https://github.com/huimao28/huimao-map/releases)
+[![Get it on GitHub](docs/assets/github-download-badge.png)](https://github.com/huimao28/huimao-map/releases)
 
 - `HuimaoMap_<version>.apk`: mobile APK
 - `HuimaoMap_<version>.aab`: mobile Google Play upload bundle
