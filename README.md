@@ -76,7 +76,9 @@ gradle :wear:assembleRelease :wear:bundleRelease
 
 ## 隐私政策
 
-完整隐私政策见：[隐私政策](docs/privacy-policy.md)。
+完整隐私政策见：[中文隐私政策](docs/privacy-policy.md) / [Privacy Policy in English](docs/privacy-policy.en.md)。
+
+英文项目说明：[README in English](README.en.md)。
 
 ### 摘要
 
