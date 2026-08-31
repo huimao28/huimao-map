@@ -46,12 +46,13 @@ baidunaviauto://navigate?lat=...&lng=...&name=...
 
 ## Downloads and installation
 
-For released versions, install Huimao Map from Google Play:
+Google Play currently provides the closed-testing version. Join the testing program before installing:
 
 - [Google Play: Huimao Map](https://play.google.com/store/apps/details?id=com.huimao.map)
 - The Wear OS version is distributed as a companion version of the mobile Huimao Map app through the same Google Play listing and is installed on supported watches.
+- Before installation, join the Google Play closed test with an eligible tester account and accept the testing invitation.
 
-For test builds, unreleased versions, and the WeChat location redirection plugins, download the appropriate files from [GitHub Releases](https://github.com/huimao28/huimao-map/releases):
+GitHub Releases provides test packages, unreleased versions, and the WeChat location redirection plugins:
 
 - `HuimaoMap_<version>.apk`: mobile APK
 - `HuimaoMap_<version>.aab`: mobile Google Play upload bundle
