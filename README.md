@@ -1,5 +1,7 @@
 # 灰猫地图
 
+[English README](README.en.md) · [中文隐私政策](docs/privacy-policy.md) · [Privacy Policy in English](docs/privacy-policy.en.md)
+
 灰猫地图是基于百度地图与百度导航 SDK 的 Android 地图/驾车导航应用，提供微信位置转发插件和 Wear OS 导航信息伴侣应用。
 
 > Android Auto 适配目前暂未提供。百度导航 SDK 的手机端 OpenGL 渲染层无法直接复用于 Android Auto 的车机渲染模型；项目后续如恢复车机支持，将采用独立的车机渲染与导航状态适配方案。
@@ -44,7 +46,12 @@ baidunaviauto://navigate?lat=...&lng=...&name=...
 
 ## 下载与安装
 
-从 [GitHub Releases](https://github.com/huimao28/huimao-map/releases) 下载对应文件：
+推荐优先通过 Google Play 安装正式版本：
+
+- [Google Play：灰猫地图](https://play.google.com/store/apps/details?id=com.huimao.map)
+- Wear OS 版本作为手机端灰猫地图的配套版本，通过同一 Google Play 应用页面的 Wear OS 设备分发安装。
+
+测试版、尚未上架版本以及微信位置转发插件，请从 [GitHub Releases](https://github.com/huimao28/huimao-map/releases) 下载对应文件：
 
 - `HuimaoMap_<版本>.apk`：手机端安装包
 - `HuimaoMap_<版本>.aab`：Google Play 上传包

@@ -1,5 +1,7 @@
 # Huimao Map
 
+[中文 README](README.md) · [Privacy Policy in English](docs/privacy-policy.en.md) · [中文隐私政策](docs/privacy-policy.md)
+
 Huimao Map is an Android map and driving-navigation application based on the Baidu Maps and Baidu Navigation SDKs. The project also provides a WeChat location redirection plugin and a Wear OS companion app for navigation information.
 
 > Android Auto support is currently unavailable. The rendering layer of the Baidu mobile navigation SDK cannot be directly reused by Android Auto's car-host rendering model. If car support is restored, it will use a separate car rendering and navigation-state integration design.
@@ -44,7 +46,12 @@ baidunaviauto://navigate?lat=...&lng=...&name=...
 
 ## Downloads and installation
 
-Download the appropriate files from [GitHub Releases](https://github.com/huimao28/huimao-map/releases):
+For released versions, install Huimao Map from Google Play:
+
+- [Google Play: Huimao Map](https://play.google.com/store/apps/details?id=com.huimao.map)
+- The Wear OS version is distributed as a companion version of the mobile Huimao Map app through the same Google Play listing and is installed on supported watches.
+
+For test builds, unreleased versions, and the WeChat location redirection plugins, download the appropriate files from [GitHub Releases](https://github.com/huimao28/huimao-map/releases):
 
 - `HuimaoMap_<version>.apk`: mobile APK
 - `HuimaoMap_<version>.aab`: mobile Google Play upload bundle
@@ -73,10 +80,6 @@ gradle :wear:assembleRelease :wear:bundleRelease
 ```
 
 The project includes local Baidu AAR and native `.so` files. Confirm that you have the required rights to use and redistribute the relevant SDK components before building or redistributing the project.
-
-## Language
-
-[中文 README](README.md) · [Privacy Policy in English](docs/privacy-policy.en.md) · [中文隐私政策](docs/privacy-policy.md)
 
 ## Privacy policy
 
