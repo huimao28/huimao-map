@@ -46,13 +46,15 @@ baidunaviauto://navigate?lat=...&lng=...&name=...
 
 ## 下载与安装
 
-Google Play 当前提供的是封闭测试版本，需要先加入测试计划：
+Google Play 当前提供的是封闭测试版本，需要先加入测试计划，并接受测试邀请。
 
-- [Google Play：灰猫地图](https://play.google.com/store/apps/details?id=com.huimao.map)
+[![Get it on Google Play](https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png)](https://play.google.com/store/apps/details?id=com.huimao.map)
+
 - Wear OS 版本作为手机端灰猫地图的配套版本，通过同一 Google Play 应用页面的 Wear OS 设备分发安装。
-- 安装前请先使用测试账号加入 Google Play 封闭测试，并接受测试邀请。
 
 GitHub Releases 提供测试包、尚未上架版本以及微信位置转发插件：
+
+[![GitHub Releases](https://img.shields.io/badge/下载-GitHub%20Releases-181717?logo=github&logoColor=white)](https://github.com/huimao28/huimao-map/releases)
 
 - `HuimaoMap_<版本>.apk`：手机端安装包
 - `HuimaoMap_<版本>.aab`：Google Play 上传包
