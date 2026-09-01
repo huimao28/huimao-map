@@ -15,8 +15,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // Wear OS 使用独立的高位版本序列，避免与手机端版本号混淆。
-        versionCode = 200002
-        versionName = "1.0.1"
+        versionCode = 200003
+        versionName = "1.0.2"
     }
 
     signingConfigs {
