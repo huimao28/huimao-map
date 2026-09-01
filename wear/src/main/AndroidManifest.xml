@@ -18,12 +18,14 @@
         <service
             android:name=".NavigationListenerService"
             android:exported="true">
+            <!-- 仅接收导航数据路径，避免旧版 BIND_LISTENER 的全量唤醒。 -->
             <intent-filter>
-                <action android:name="com.google.android.gms.wearable.BIND_LISTENER" />
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/huimao/navigation" />
             </intent-filter>
-            <meta-data
-                android:name="com.google.android.gms.wearable.NODE_ID"
-                android:value="*" />
         </service>
         <activity
             android:name=".MainActivity"
