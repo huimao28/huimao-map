@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   build:
+    if: !endsWith(github.ref_name, '-wear')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
