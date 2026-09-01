@@ -3,7 +3,6 @@ package com.huimao.map.wear
 import android.os.Bundle
 import android.Manifest
 import android.content.pm.PackageManager
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -37,15 +36,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 
 class MainActivity : ComponentActivity() {
-    private val notificationPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        ) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
         val viewModel = WearNavigationViewModel(applicationContext)
         setContent { WearNavigationScreen(viewModel) }
     }
