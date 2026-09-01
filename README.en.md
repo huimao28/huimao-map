@@ -62,6 +62,7 @@ GitHub Releases provides test packages, unreleased versions, and the WeChat loca
 - `HuimaoMap_Wear_<version>.apk`: Wear OS APK for local testing
 - The Wear OS version is distributed as the Wear OS device version of the mobile Huimao Map app and uses the same package name: `com.huimao.map`.
 - Wear OS versionName: `1.0.1`; internal versionCode: `200002` (used only for version ordering and not shown as the version name).
+- Navigation notifications use Wear OS Ongoing Activity, displaying a tappable activity indicator on the watch face during background navigation.
 - `WeChatRedirect_*_<version>.apk`: WeChat location redirection plugin
 
 Before installing the Wear OS companion version, make sure the phone and watch are paired, use the same Google account, and have Huimao Map installed on the phone.

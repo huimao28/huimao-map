@@ -62,6 +62,7 @@ GitHub Releases 提供测试包、尚未上架版本以及微信位置转发插�
 - `HuimaoMap_Wear_<版本>.apk`：Wear OS 本地测试安装包
 - Wear OS 版本作为手机端灰猫地图的 Wear OS 设备版本，包名与手机端一致：`com.huimao.map`。
 - Wear OS 端 versionName：`1.0.1`；内部 versionCode：`200002`（仅用于版本排序，不显示在版本名称中）。
+- 导航通知使用 Wear OS Ongoing Activity，后台导航时可在表盘底部显示可点击的活动指示器。
 
 安装 Wear OS 配套版本前，请确保手机和手表已配对、使用同一 Google 账号，并已在手机端安装灰猫地图。
 

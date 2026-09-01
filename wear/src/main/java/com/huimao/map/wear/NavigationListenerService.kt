@@ -4,6 +4,8 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import androidx.core.app.NotificationCompat
+import androidx.wear.ongoing.OngoingActivity
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -58,18 +60,25 @@ class NavigationListenerService : WearableListenerService() {
         }
         val intent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification = Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(com.huimao.map.wear.R.mipmap.ic_launcher)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_navigation_ongoing)
             .setContentTitle(instruction)
             .setContentText(detail)
             .setSubText("灰猫地图 · 导航中")
             .setContentIntent(intent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setCategory(Notification.CATEGORY_NAVIGATION)
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+        // 将导航通知注册为 Wear OS 系统级 Ongoing Activity，使表盘底部出现可点击活动指示器。
+        OngoingActivity.Builder(applicationContext, notificationId, builder)
+            .setAnimatedIcon(R.drawable.ic_navigation_ongoing)
+            .setStaticIcon(R.drawable.ic_navigation_ongoing)
+            .setTouchIntent(intent)
             .build()
-        manager.notify(notificationId, notification)
+            .apply(applicationContext)
+        manager.notify(notificationId, builder.build())
     }
 
     private fun vibrateForAnnouncement() {

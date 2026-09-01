@@ -58,4 +58,5 @@ dependencies {
     implementation(libs.androidx.wear.compose.foundation)
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.play.services.wearable)
+    implementation(libs.androidx.wear.ongoing)
 }
