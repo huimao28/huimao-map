@@ -31,6 +31,8 @@ object CarNavigationBridge {
     @Volatile var state: CarNavigationState = CarNavigationState()
         private set
 
+    @Volatile private var announcementSequence: Long = 0L
+    @Volatile private var announcementText: String = ""
     @Volatile private var appContext: android.content.Context? = null
     private val listeners = CopyOnWriteArraySet<() -> Unit>()
 
@@ -75,6 +77,17 @@ object CarNavigationBridge {
         phoneFrame = null
         phoneFrameTimeMs = 0L
         if (old != null && !old.isRecycled) runCatching { old.recycle() }
+    }
+
+    fun announcement(): Pair<Long, String> = announcementSequence to announcementText
+
+    fun announce(text: String) {
+        val value = text.trim()
+        if (value.isBlank()) return
+        announcementText = value
+        announcementSequence += 1L
+        publish()
+        listeners.forEach { runCatching { it() } }
     }
 
     fun update(block: (CarNavigationState) -> CarNavigationState) {

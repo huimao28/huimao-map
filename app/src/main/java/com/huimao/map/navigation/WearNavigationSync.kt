@@ -21,6 +21,8 @@ object WearNavigationSync {
     private const val KEY_ROAD = "roadName"
     private const val KEY_DESTINATION = "destinationName"
     private const val KEY_UPDATED_AT = "updatedAt"
+    private const val KEY_ANNOUNCEMENT = "announcement"
+    private const val KEY_ANNOUNCEMENT_ID = "announcementId"
 
     private var dataClient: DataClient? = null
     private val sequence = AtomicLong(0)
@@ -43,6 +45,9 @@ object WearNavigationSync {
             dataMap.putString(KEY_ROAD, state.roadName)
             dataMap.putString(KEY_DESTINATION, state.destinationName)
             dataMap.putLong(KEY_UPDATED_AT, sequence.incrementAndGet())
+            val announcement = com.huimao.map.navigation.CarNavigationBridge.announcement()
+            dataMap.putLong(KEY_ANNOUNCEMENT_ID, announcement.first)
+            dataMap.putString(KEY_ANNOUNCEMENT, announcement.second)
         }.asPutDataRequest().setUrgent()
         return dataClient!!.putDataItem(request)
     }

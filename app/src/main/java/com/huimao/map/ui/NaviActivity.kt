@@ -333,7 +333,10 @@ class NaviActivity : Activity() {
             BaiduNaviManagerFactory.getTTSManager().initTTS(
                 object : IBNTTSManager.IBNOuterTTSPlayerCallback() {
                     override fun playTTSText(text: String?, speechId: String?, type: Int, raw: String?): Int {
-                        if (!ttsReady || text.isNullOrBlank()) return 4
+                        if (text.isNullOrBlank()) return 4
+                        // 无论系统 TTS 还是百度导航语音，先把本次播报作为事件同步到手表。
+                        CarNavigationBridge.announce(text)
+                        if (!ttsReady) return 4
                         val result = systemTts?.speak(text, TextToSpeech.QUEUE_FLUSH, null,
                             speechId ?: "baidu_navi_${System.currentTimeMillis()}")
                         return if (result == TextToSpeech.SUCCESS) 2 else 4

@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-feature android:name="android.hardware.type.watch" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <application
@@ -13,6 +15,16 @@
         <meta-data
             android:name="com.google.android.wearable.standalone"
             android:value="false" />
+        <service
+            android:name=".NavigationListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.BIND_LISTENER" />
+            </intent-filter>
+            <meta-data
+                android:name="com.google.android.gms.wearable.NODE_ID"
+                android:value="*" />
+        </service>
         <activity
             android:name=".MainActivity"
             android:exported="true">
