@@ -12,7 +12,7 @@
 
 - 手机端灰猫地图保持 `1.1.7`，本次不发布新的手机端版本。
 - Wear OS 使用与手机端一致的包名 `com.huimao.map`，并作为同一 Play 应用的 Wear OS 设备版本发布。
-- Wear OS 本版本展示版本号为 `1.0.1`，内部 `versionCode` 为 `2`。
+- Wear OS 本版本展示版本号为 `1.0.1`，内部 `versionCode` 为 `200002`；后续 Wear OS 版本依次递增为 `200003`、`200004` 等。
 - 手机与手表之间继续使用 Google Play services Wearable Data Layer 通信。
 
 ## 已知问题

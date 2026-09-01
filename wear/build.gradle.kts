@@ -14,8 +14,8 @@ android {
         applicationId = "com.huimao.map"
         minSdk = 26
         targetSdk = 36
-        // Wear OS 独立应用单独维护自己的版本序列。
-        versionCode = 2
+        // Wear OS 使用独立的高位版本序列，避免与手机端版本号混淆。
+        versionCode = 200002
         versionName = "1.0.1"
     }
 
