@@ -50,7 +50,8 @@ Google Play currently provides the closed-testing version. Join the testing prog
 
 [![Get it on Google Play](https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png)](https://play.google.com/store/apps/details?id=com.huimao.map)
 
-- The Wear OS version is distributed as a companion version of the mobile Huimao Map app through the same Google Play listing and is installed on supported watches.
+- The mobile app remains at `1.1.7`; this release does not publish a new mobile version.
+- The Wear OS companion app is updated to `1.1.8` with internal version code `35`.
 
 GitHub Releases provides test packages, unreleased versions, and the WeChat location redirection plugins:
 
@@ -97,7 +98,8 @@ Before creating a release tag, update [`RELEASE_NOTES.md`](RELEASE_NOTES.md). Gi
 ## Current version
 
 ```text
-1.1.7
+Mobile app: 1.1.7
+Wear OS companion: 1.1.8
 ```
 
 ## Feedback

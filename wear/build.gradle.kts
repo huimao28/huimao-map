@@ -14,9 +14,8 @@ android {
         applicationId = "com.huimao.map"
         minSdk = 26
         targetSdk = 36
-        // 手机与手表端继续沿用项目原有的连续内部版本号。
-        versionCode = 34
-        versionName = "1.1.7"
+        versionCode = 35
+        versionName = "1.1.8"
     }
 
     signingConfigs {

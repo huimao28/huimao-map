@@ -50,7 +50,8 @@ Google Play 当前提供的是封闭测试版本，需要先加入测试计划�
 
 [![Get it on Google Play](https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png)](https://play.google.com/store/apps/details?id=com.huimao.map)
 
-- Wear OS 版本作为手机端灰猫地图的配套版本，通过同一 Google Play 应用页面的 Wear OS 设备分发安装。
+- 手机端保持 `1.1.7`，本次不发布新的手机端版本。
+- Wear OS 配套端更新为 `1.1.8`，内部版本号为 `35`。
 
 GitHub Releases 提供测试包、尚未上架版本以及微信位置转发插件：
 
@@ -105,7 +106,8 @@ gradle :wear:assembleRelease :wear:bundleRelease
 ## 当前版本
 
 ```text
-1.1.7
+手机端：1.1.7
+Wear OS 配套端：1.1.8
 ```
 
 ## 反馈
