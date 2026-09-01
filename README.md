@@ -60,8 +60,8 @@ GitHub Releases 提供测试包、尚未上架版本以及微信位置转发插�
 - `HuimaoMap_<版本>.apk`：手机端安装包
 - `HuimaoMap_<版本>.aab`：Google Play 上传包
 - `HuimaoMap_Wear_<版本>.apk`：Wear OS 本地测试安装包
-- Wear OS 版本现在作为独立应用维护，版本为 `1.0.1`。
-- `WeChatRedirect_*_<版本>.apk`：微信位置转发插件
+- Wear OS 版本作为手机端灰猫地图的 Wear OS 设备版本，包名与手机端一致：`com.huimao.map`。
+- Wear OS 版本号为 `1.0.1`，内部版本号为 `2`。- `WeChatRedirect_*_<版本>.apk`：微信位置转发插件
 
 安装 Wear OS 配套版本前，请确保手机和手表已配对、使用同一 Google 账号，并已在手机端安装灰猫地图。
 

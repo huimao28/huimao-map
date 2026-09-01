@@ -10,7 +10,8 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.huimao.map.wear"
+        // 与手机端共用包名；Wear OS 通过 uses-feature 作为同一应用的设备版本分发。
+        applicationId = "com.huimao.map"
         minSdk = 26
         targetSdk = 36
         // Wear OS 独立应用单独维护自己的版本序列。
