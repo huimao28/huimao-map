@@ -14,8 +14,8 @@ android {
         applicationId = "com.huimao.map"
         minSdk = 26
         targetSdk = 36
-        // 同一 Play 应用内，Wear OS 与手机使用不同 versionCode；展示版本号保持一致。
-        versionCode = 10117
+        // 手机与手表端使用同一正常版本代码；Wear OS 由设备特性负责筛选。
+        versionCode = 117
         versionName = "1.1.7"
     }
 

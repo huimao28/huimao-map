@@ -13,7 +13,7 @@
 ## 未修改内容
 
 - 手机主应用包名仍为 `com.huimao.map`。
-- Wear OS 应用包名仍为 `com.huimao.map.wear`。
+- Wear OS 应用包名与手机端保持一致，为 `com.huimao.map`。
 - 百度地图 Android AK 配置方式不变。
 - 百度导航、路线规划、定位和微信位置转发功能保持原有行为。
 - Android Auto 仍处于暂时移除状态。
@@ -27,7 +27,7 @@
 
 ## 安装或升级注意事项
 
-- 本版本为 `1.1.7`，`versionCode` 为 `177`。
+- 本版本为 `1.1.7`，手机端和 Wear OS 端的 `versionCode` 均为 `117`。
 - 主应用安装包：`HuimaoMap_1.1.7.apk`。
 - 手表安装包：`HuimaoMap_Wear_1.1.7.apk`。
 - 微信转发插件分别为百度、高德、腾讯版本；代理 APK 与对应官方地图使用相同包名，不能和对应官方地图同时安装。
