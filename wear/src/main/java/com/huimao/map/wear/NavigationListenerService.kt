@@ -35,6 +35,7 @@ class NavigationListenerService : WearableListenerService() {
             val id = map.getLong("announcementId", 0L)
             if (id > 0L && id != lastAnnouncementId) {
                 lastAnnouncementId = id
+                postAnnouncementAlert(map.getString("announcement").orEmpty())
                 vibrateForAnnouncement()
             }
         }
@@ -70,6 +71,8 @@ class NavigationListenerService : WearableListenerService() {
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            // 同时让系统通知通道负责振动；部分 Wear OS 设备会限制后台直接调用 Vibrator。
+            .setVibrate(VIBRATION_PATTERN)
 
         // 将导航通知注册为 Wear OS 系统级 Ongoing Activity，使表盘底部出现可点击活动指示器。
         OngoingActivity.Builder(applicationContext, notificationId, builder)
@@ -79,6 +82,21 @@ class NavigationListenerService : WearableListenerService() {
             .build()
             .apply(applicationContext)
         manager.notify(notificationId, builder.build())
+    }
+
+    private fun postAnnouncementAlert(text: String) {
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        val alert = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_navigation_ongoing)
+            .setContentTitle("导航播报")
+            .setContentText(text.ifBlank { "请注意前方路线" })
+            .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setAutoCancel(true)
+            .setTimeoutAfter(3500L)
+            .setVibrate(VIBRATION_PATTERN)
+            .build()
+        manager.notify(ANNOUNCEMENT_NOTIFICATION_ID, alert)
     }
 
     private fun vibrateForAnnouncement() {
@@ -96,9 +114,21 @@ class NavigationListenerService : WearableListenerService() {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = getSystemService(NotificationManager::class.java) ?: return
         manager.createNotificationChannel(NotificationChannel(
-            CHANNEL_ID, "导航通知", NotificationManager.IMPORTANCE_HIGH
+            CHANNEL_ID, "导航通知", NotificationManager.IMPORTANCE_LOW
         ).apply { description = "手机端灰猫地图导航实时指引" })
+        manager.createNotificationChannel(NotificationChannel(
+            ALERT_CHANNEL_ID, "导航播报", NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "导航语音播报时的振动提醒"
+            enableVibration(true)
+            vibrationPattern = VIBRATION_PATTERN
+        })
     }
 
-    companion object { private const val CHANNEL_ID = "huimao_navigation" }
+    companion object {
+        private const val CHANNEL_ID = "huimao_navigation"
+        private const val ANNOUNCEMENT_NOTIFICATION_ID = 118
+        private const val ALERT_CHANNEL_ID = "huimao_navigation_alert"
+        private val VIBRATION_PATTERN = longArrayOf(0L, 120L, 80L, 120L)
+    }
 }
