@@ -13,5 +13,5 @@ class NavCarService : CarAppService() {
 
 class NavCarSession : Session() {
     override fun onCreateScreen(intent: Intent) = NavCarScreen(carContext)
-    override fun onNewIntent(intent: Intent) { screenManager.push(NavCarScreen(carContext)) }
+    override fun onNewIntent(intent: Intent) { getScreenManager().push(NavCarScreen(carContext)) }
 }
