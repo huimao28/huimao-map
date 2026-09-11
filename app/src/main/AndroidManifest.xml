@@ -31,8 +31,9 @@
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
 
-    <!-- Android Auto 已暂时移除；Wear OS 适配使用独立模块。 -->
-
+    <!-- Android Auto / OSM car display -->
+    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
+    <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
     <application
         android:name=".BaiduNaviApplication"
         android:allowBackup="true"
@@ -49,7 +50,9 @@
             android:name="com.baidu.lbsapi.API_KEY"
             android:value="PLACEHOLDER_AK" />
 
-        <!-- Android Auto 元数据已暂时移除。 -->
+    <meta-data
+        android:name="com.google.android.gms.car.application"
+        android:resource="@xml/automotive_app_desc" />
 
         <activity
             android:name=".ui.MainActivity"
@@ -103,7 +106,17 @@
             android:enabled="true"
             android:process=":remote" />
 
-        <!-- Android Auto 服务已暂时移除。 -->
+        <!-- Android Auto / OSM Car App -->
+        <service
+            android:name=".car.NavCarService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.car.app.category"
+                android:value="@string/car_app_category" />
+        </service>
 
     </application>
 </manifest>

@@ -4,7 +4,7 @@
 
 灰猫地图是基于百度地图与百度导航 SDK 的 Android 地图/驾车导航应用，提供微信位置转发插件和 Wear OS 导航信息伴侣应用。
 
-> Android Auto 适配目前暂未提供。百度导航 SDK 的手机端 OpenGL 渲染层无法直接复用于 Android Auto 的车机渲染模型；项目后续如恢复车机支持，将采用独立的车机渲染与导航状态适配方案。
+> Android Auto 预发布版本使用独立 OSM 车机渲染层；手机端继续使用百度导航 SDK 提供路线、定位、导航状态和语音。该版本仅作为 GitHub Pre-release 发布。
 
 ## 功能
 
@@ -46,20 +46,21 @@ baidunaviauto://navigate?lat=...&lng=...&name=...
 
 ## 下载与安装
 
-Google Play 当前提供的是封闭测试版本，需要先加入测试计划，并接受测试邀请。
+本版本只通过 GitHub Releases 的 **Pre-release** 发布，不上传 Google Play；包含手机端 APK 和 AAB。
 
-[![Get it on Google Play](https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png)](https://play.google.com/store/apps/details?id=com.huimao.map)
+[下载 GitHub Pre-release](https://github.com/huimao28/huimao-map/releases)
 
-- 手机端保持 `1.1.7`，本次不发布新的手机端版本。
-- Wear OS 配套端更新为 `1.1.8`，内部版本号为 `35`。
+- 手机端版本为 `1.1.8`，本次发布包含手机 APK/AAB。
+- Wear OS 端本次无代码变动，不随本次 Pre-release 重新构建或发布；继续使用上一版 Wear 包。
 
 GitHub Releases 提供测试包、尚未上架版本以及微信位置转发插件：
 
 [![Get it on GitHub](docs/assets/github-download-badge.png)](https://github.com/huimao28/huimao-map/releases)
 
-- `HuimaoMap_<版本>.apk`：手机端安装包
-- `HuimaoMap_<版本>.aab`：Google Play 上传包
-- `HuimaoMap_Wear_<版本>.apk`：Wear OS 本地测试安装包
+- `HuimaoMap_<版本>.apk`：手机端 APK
+- `HuimaoMap_<版本>.aab`：手机端 AAB
+- `WeChatRedirect_<地图>_<版本>.apk`：微信位置转发插件
+
 - Wear OS 版本作为手机端灰猫地图的 Wear OS 设备版本，包名与手机端一致：`com.huimao.map`。
 - Wear OS 端 versionName：`1.0.4`；内部 versionCode：`200005`（仅用于版本排序，不显示在版本名称中）。
 - 导航通知使用 Wear OS Ongoing Activity，后台导航时可在表盘底部显示可点击的活动指示器。
@@ -107,8 +108,8 @@ gradle :wear:assembleRelease :wear:bundleRelease
 ## 当前版本
 
 ```text
-手机端：1.1.7
-Wear OS 配套端：1.1.8
+手机端：1.1.8
+Wear OS 配套端：1.1.8（本次不变）
 ```
 
 ## 反馈

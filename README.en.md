@@ -4,7 +4,7 @@
 
 Huimao Map is an Android map and driving-navigation application based on the Baidu Maps and Baidu Navigation SDKs. The project also provides a WeChat location redirection plugin and a Wear OS companion app for navigation information.
 
-> Android Auto support is currently unavailable. The rendering layer of the Baidu mobile navigation SDK cannot be directly reused by Android Auto's car-host rendering model. If car support is restored, it will use a separate car rendering and navigation-state integration design.
+> The Android Auto pre-release uses an independent OSM car renderer. The phone continues to use the Baidu navigation SDK for routing, positioning, navigation state, and voice guidance. This version is distributed only as a GitHub Pre-release.
 
 ## Features
 
@@ -46,12 +46,14 @@ baidunaviauto://navigate?lat=...&lng=...&name=...
 
 ## Downloads and installation
 
-Google Play currently provides the closed-testing version. Join the testing program and accept the testing invitation before installing.
+This version is published only as a **GitHub Pre-release** and is not uploaded to Google Play.
+
+[Download GitHub Pre-release](https://github.com/huimao28/huimao-map/releases)
 
 [![Get it on Google Play](https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png)](https://play.google.com/store/apps/details?id=com.huimao.map)
 
-- The mobile app remains at `1.1.7`; this release does not publish a new mobile version.
-- The Wear OS companion app is updated to `1.1.8` with internal version code `35`.
+- The mobile app version is `1.1.8` (versionCode `35`), with APK and AAB included.
+- The Wear OS companion has no code or version change and is not rebuilt for this release.
 
 GitHub Releases provides test packages, unreleased versions, and the WeChat location redirection plugins:
 
@@ -59,7 +61,6 @@ GitHub Releases provides test packages, unreleased versions, and the WeChat loca
 
 - `HuimaoMap_<version>.apk`: mobile APK
 - `HuimaoMap_<version>.aab`: mobile Google Play upload bundle
-- `HuimaoMap_Wear_<version>.apk`: Wear OS APK for local testing
 - The Wear OS version is distributed as the Wear OS device version of the mobile Huimao Map app and uses the same package name: `com.huimao.map`.
 - Wear OS versionName: `1.0.4`; internal versionCode: `200005` (used only for version ordering and not shown as the version name).
 - Navigation notifications use Wear OS Ongoing Activity, displaying a tappable activity indicator on the watch face during background navigation.
@@ -100,8 +101,8 @@ Before creating a release tag, update [`RELEASE_NOTES.md`](RELEASE_NOTES.md). Gi
 ## Current version
 
 ```text
-Mobile app: 1.1.7
-Wear OS companion: 1.1.8
+Mobile app: 1.1.8 (versionCode 35)
+Wear OS companion: unchanged for this release
 ```
 
 ## Feedback

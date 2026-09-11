@@ -13,8 +13,8 @@ android {
         applicationId = "com.huimao.map"
         minSdk = 26
         targetSdk = 36
-        versionCode = 34
-        versionName = "1.1.7"
+        versionCode = 35
+        versionName = "1.1.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
@@ -88,6 +88,8 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.car.app)
+    implementation(libs.androidx.car.app.projected)
     implementation(libs.androidx.datastore.preferences)
     // 百度普通 Android 导航 SDK（本地 AAR 开发包，已包含 地图/定位/搜索/导航 全部模块）
     // BaiduLBS_Android.aar = 地图+定位+搜索+工具 all-in-one
