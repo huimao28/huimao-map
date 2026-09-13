@@ -1,6 +1,8 @@
 package com.huimao.map.car
 
 import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
 import androidx.car.app.AppManager
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
@@ -10,15 +12,22 @@ import androidx.car.app.model.Action
 import androidx.car.app.model.ActionStrip
 import androidx.car.app.model.Template
 import androidx.car.app.navigation.model.NavigationTemplate
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import com.huimao.map.navigation.CarNavigationBridge
 
 /** Android Auto screen. Baidu on the phone owns navigation; OSM is rendered here. */
 class NavCarScreen(carContext: CarContext) : Screen(carContext), SurfaceCallback {
     private var renderer: OsmCarRenderer? = null
     private var listener: (() -> Unit)? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile private var isDestroyed = false
 
     init {
-        listener = { invalidate() }
+        lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onDestroy(owner: LifecycleOwner) { release() }
+        })
+        listener = { mainHandler.post { if (!isDestroyed) invalidate() } }
         CarNavigationBridge.addListener(listener!!)
         carContext.getCarService(AppManager::class.java).setSurfaceCallback(this)
     }
@@ -50,6 +59,8 @@ class NavCarScreen(carContext: CarContext) : Screen(carContext), SurfaceCallback
     override fun onStableAreaChanged(stableArea: Rect) = Unit
 
     fun release() {
+        isDestroyed = true
+        mainHandler.removeCallbacksAndMessages(null)
         carContext.getCarService(AppManager::class.java).setSurfaceCallback(null)
         listener?.let { CarNavigationBridge.removeListener(it) }
         listener = null
