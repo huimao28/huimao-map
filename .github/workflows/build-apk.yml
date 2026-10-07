@@ -85,6 +85,8 @@ jobs:
           body_path: RELEASE_NOTES.md
           append_body: false
           generate_release_notes: false
+          prerelease: false
+          make_latest: true
           files: |
             HuimaoMap_*.apk
             HuimaoMap_*.aab
