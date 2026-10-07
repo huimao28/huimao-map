@@ -13,8 +13,8 @@ android {
         applicationId = "com.huimao.map"
         minSdk = 26
         targetSdk = 36
-        versionCode = 117
-        versionName = "1.1.7"
+        versionCode = 35
+        versionName = "1.1.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
@@ -107,7 +107,6 @@ dependencies {
     implementation(libs.okhttp3.logging)
     // 百度导航原生 UI 布局直接引用，离线 AAR 不会携带 Maven 传递依赖。
     implementation("com.airbnb.android:lottie:6.4.0")
-    implementation("com.facebook.fresco:fresco:3.2.0")
     // 百度导航 SDK 的沿途推荐、全景/自定义图标面板运行时引用 Glide。
     implementation("com.github.bumptech.glide:glide:4.16.0")
     debugImplementation(libs.androidx.ui.tooling)

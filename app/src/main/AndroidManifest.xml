@@ -5,7 +5,9 @@
     <!-- 基础定位权限 -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <!-- 不申请后台定位：导航使用前台服务即可；同时剔除 onsdk_all.aar 合并进来的后台定位声明 -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"
+        tools:node="remove" />
     
     <!-- 网络与 WiFi 状态（百度定位 SDK 必需） -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
