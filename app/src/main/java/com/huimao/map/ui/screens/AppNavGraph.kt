@@ -24,6 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.app.Application
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -334,6 +337,7 @@ object Routes {
     const val NAVIGATION = "navigation"
     const val SETTINGS = "settings"
     const val FAVORITES = "favorites"
+    const val ABOUT = "about"
     const val SEARCH_QUERY = "search/{query}"
     fun search(query: String) = "search/${android.net.Uri.encode(query)}"
 }
@@ -401,7 +405,13 @@ fun AppNavGraph(
             )
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onAboutClick = { navController.navigate(Routes.ABOUT) }
+            )
+        }
+        composable(Routes.ABOUT) {
+            AboutScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.FAVORITES) {
             FavoritesScreen(
@@ -1022,7 +1032,7 @@ fun TripItem(label: String, value: String) {
 // ─────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onAboutClick: () -> Unit) {
     val settingsVm: SettingsViewModel = viewModel(
         factory = androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.getInstance(
             androidx.compose.ui.platform.LocalContext.current.applicationContext as android.app.Application
@@ -1286,6 +1296,14 @@ fun SettingsScreen(onBack: () -> Unit) {
             item {
                 Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
                     Column {
+                        ListItem(
+                            headlineContent = { Text("关于灰猫地图") },
+                            supportingContent = { Text("作者信息 · 开源库鸣谢 · 相关链接") },
+                            leadingContent = { Icon(Icons.Default.Person, null) },
+                            trailingContent = { Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            modifier = Modifier.clickable { onAboutClick() }
+                        )
+                        HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                         ListItem(headlineContent = { Text("版本") }, supportingContent = { Text("${com.huimao.map.BuildConfig.VERSION_NAME} (${com.huimao.map.BuildConfig.VERSION_CODE})") }, leadingContent = { Icon(Icons.Default.Info, null) })
                         HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                         ListItem(headlineContent = { Text("百度地图 SDK") }, supportingContent = { Text("地图 v7.6.4.1 · 定位 v9.6.4") }, leadingContent = { Icon(Icons.Default.Map, null) })
@@ -1516,4 +1534,159 @@ fun maneuverIcon(m: ManeuverType): ImageVector = when (m) {
     ManeuverType.ARRIVE -> Icons.Default.Flag
     ManeuverType.DEPART -> Icons.Default.NearMe
     else -> Icons.Default.ArrowUpward
+}
+
+// ─────────────────────────────────────────────
+// AboutScreen（关于灰猫地图：作者信息 · 开源库鸣谢 · 相关链接）
+// ─────────────────────────────────────────────
+private const val ABOUT_URL_RELEASES = "https://github.com/huimao28/huimao-map/releases"
+private const val ABOUT_URL_REPO = "https://github.com/huimao28/huimao-map"
+private const val ABOUT_URL_HOMEPAGE = "https://github.com/huimao28"
+
+private val ABOUT_CREDITS = listOf(
+    "百度地图 SDK（地图 / 定位 / 搜索 / 导航）" to "百度地图开放平台",
+    "Jetpack Compose · Material 3" to "Apache License 2.0",
+    "AndroidX（Core / Lifecycle / Activity / Navigation / DataStore）" to "Apache License 2.0",
+    "OkHttp3" to "Apache License 2.0",
+    "Lottie" to "Apache License 2.0",
+    "Glide" to "BSD / MIT / Apache License 2.0",
+    "Google Play services Wearable" to "Google Play 服务条款",
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AboutScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    fun openUrl(url: String) {
+        try {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+        } catch (_: Exception) { }
+    }
+    fun sectionTitle(text: String): @Composable () -> Unit = {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+        )
+    }
+
+    Scaffold(topBar = {
+        TopAppBar(
+            title = { Text("关于灰猫地图", fontWeight = FontWeight.SemiBold) },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) } }
+        )
+    }) { pad ->
+        LazyColumn(
+            Modifier.fillMaxSize().padding(pad),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item {
+                Column(Modifier.padding(vertical = 8.dp, horizontal = 4.dp)) {
+                    Text(
+                        "灰猫地图",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "版本 ${com.huimao.map.BuildConfig.VERSION_NAME} (${com.huimao.map.BuildConfig.VERSION_CODE})",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "基于百度地图与百度导航 SDK 的 Android 地图 / 导航应用，支持微信位置转发与 Wear OS 适配。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            item { sectionTitle("作者信息")() }
+            item {
+                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Column {
+                        ListItem(
+                            headlineContent = { Text("开发者") },
+                            supportingContent = { Text("huimao28") },
+                            leadingContent = { Icon(Icons.Default.Person, null) }
+                        )
+                        HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                        ListItem(
+                            headlineContent = { Text("GitHub 主页") },
+                            supportingContent = { Text("github.com/huimao28") },
+                            leadingContent = { Icon(Icons.Default.Public, null) },
+                            trailingContent = { Icon(Icons.Default.OpenInNew, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            modifier = Modifier.clickable { openUrl(ABOUT_URL_HOMEPAGE) }
+                        )
+                    }
+                }
+            }
+            item { sectionTitle("相关链接")() }
+            item {
+                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { openUrl(ABOUT_URL_RELEASES) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("检查更新", modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.OpenInNew, null)
+                        }
+                        OutlinedButton(
+                            onClick = { openUrl(ABOUT_URL_REPO) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("开源仓库", modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.OpenInNew, null)
+                        }
+                    }
+                }
+            }
+            item { sectionTitle("开源许可")() }
+            item {
+                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Text(
+                        "本仓库暂未声明开源协议，默认保留所有权利。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
+            item { sectionTitle("开源库鸣谢")() }
+            item {
+                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Column {
+                        ABOUT_CREDITS.forEachIndexed { i, (name, license) ->
+                            if (i > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                            ListItem(
+                                headlineContent = { Text(name, style = MaterialTheme.typography.bodyMedium) },
+                                supportingContent = { Text(license, style = MaterialTheme.typography.labelSmall) },
+                                leadingContent = { Icon(Icons.Default.Favorite, null, tint = MaterialTheme.colorScheme.primary) }
+                            )
+                        }
+                    }
+                }
+            }
+            item { sectionTitle("数据来源")() }
+            item {
+                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Text(
+                        "地图、定位、POI 搜索、路线规划与导航数据均由百度地图提供。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
+        }
+    }
 }
