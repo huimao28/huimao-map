@@ -49,7 +49,18 @@ jobs:
           HUIMAO_KEY_ALIAS: release
         run: |
           VERSION=$(grep -m1 'versionName =' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
-          gradle :app:assembleRelease :app:bundleRelease --stacktrace
+          set +e
+          gradle :app:assembleRelease :app:bundleRelease --stacktrace > /tmp/gradle-build.log 2>&1
+          STATUS=$?
+          set -e
+          if [ $STATUS -ne 0 ]; then
+            echo "::error::Gradle 构建失败，退出码 $STATUS"
+            grep -E "^e: |error:|FAILED|What went wrong|Exception" /tmp/gradle-build.log | head -30 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            tail -30 /tmp/gradle-build.log
+            exit $STATUS
+          fi
           mkdir -p release-files
           cp app/build/outputs/apk/release/app-release.apk release-files/HuimaoMap_${VERSION}.apk
           cp app/build/outputs/bundle/release/app-release.aab release-files/HuimaoMap_${VERSION}.aab
