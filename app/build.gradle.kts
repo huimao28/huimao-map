@@ -109,5 +109,7 @@ dependencies {
     implementation("com.airbnb.android:lottie:6.4.0")
     // 百度导航 SDK 的沿途推荐、全景/自定义图标面板运行时引用 Glide。
     implementation("com.github.bumptech.glide:glide:4.16.0")
+    // 赞助内购（关于页）：Google Play Billing
+    implementation(libs.billing.ktx)
     debugImplementation(libs.androidx.ui.tooling)
 }

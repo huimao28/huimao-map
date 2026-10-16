@@ -11,6 +11,7 @@ datastore = "1.0.0"
 # 最新稳定版，兼容当前 Android Gradle Plugin
 wearCompose = "1.6.2"
 playServicesWearable = "19.0.0"
+billingKtx = "9.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -43,6 +44,7 @@ androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview"
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version = "1.6.1" }
 okhttp3 = { group = "com.squareup.okhttp3", name = "okhttp", version = "4.12.0" }
 okhttp3-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version = "4.12.0" }
+billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billingKtx" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

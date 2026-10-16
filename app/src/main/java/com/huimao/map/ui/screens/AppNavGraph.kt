@@ -23,9 +23,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.app.Activity
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
+import com.android.billingclient.api.ProductDetails
+import com.huimao.map.billing.SponsorBillingManager
+import com.huimao.map.billing.SponsorTier
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -1536,6 +1541,97 @@ fun maneuverIcon(m: ManeuverType): ImageVector = when (m) {
 }
 
 // ─────────────────────────────────────────────
+// SponsorSection（关于页「赞助」区：三个档位的一次性内购，可重复购买）
+// ─────────────────────────────────────────────
+@Composable
+fun SponsorSection() {
+    val context = LocalContext.current
+    var products by remember { mutableStateOf<List<ProductDetails>?>(null) }
+    var toastText by remember { mutableStateOf<String?>(null) }
+
+    val manager = remember {
+        SponsorBillingManager(
+            context,
+            onPurchaseSuccess = { toastText = "感谢你的赞助！" },
+            onError = { toastText = "购买未完成，请稍后重试" },
+        )
+    }
+
+    LaunchedEffect(manager) {
+        manager.connect { products = it }
+    }
+    DisposableEffect(manager) {
+        onDispose { manager.destroy() }
+    }
+    toastText?.let { text ->
+        LaunchedEffect(text) {
+            Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+            toastText = null
+        }
+    }
+
+    Text(
+        "赞助",
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+    )
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                "如果灰猫地图对你有帮助，欢迎赞助支持开发 ☕ 赞助为一次性内购，可重复购买。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            when (val list = products) {
+                null -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(vertical = 8.dp)
+                            .size(28.dp),
+                    )
+                }
+                else -> {
+                    val items = list.mapNotNull { details ->
+                        SponsorTier.fromProductId(details.productId)?.let { tier -> tier to details }
+                    }
+                    if (items.isEmpty()) {
+                        Text(
+                            "赞助功能暂未开放",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        items.forEach { (tier, details) ->
+                            val price = details.oneTimePurchaseOfferDetails?.formattedPrice
+                            val label = when (tier) {
+                                SponsorTier.COFFEE -> "请喝咖啡"
+                                SponsorTier.LUNCH -> "请吃午餐"
+                                SponsorTier.FEAST -> "请吃大餐"
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    (context as? Activity)?.let { activity ->
+                                        manager.launchPurchase(activity, details)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                            ) {
+                                Text(if (price != null) "$label · $price" else label)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────
 // AboutScreen（关于灰猫地图：作者信息 · 开源库鸣谢 · 相关链接）
 // ─────────────────────────────────────────────
 private const val ABOUT_URL_RELEASES = "https://github.com/huimao28/huimao-map/releases"
@@ -1550,6 +1646,7 @@ private val ABOUT_CREDITS = listOf(
     "Lottie" to "Apache License 2.0",
     "Glide" to "BSD / MIT / Apache License 2.0",
     "Google Play services Wearable" to "Google Play 服务条款",
+    "Google Play Billing Library" to "Google Play 服务条款",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1607,6 +1704,9 @@ fun AboutScreen(onBack: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+            item {
+                SponsorSection()
             }
             item { sectionTitle("作者信息")() }
             item {
