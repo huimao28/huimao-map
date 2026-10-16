@@ -11,7 +11,7 @@ datastore = "1.0.0"
 # 最新稳定版，兼容当前 Android Gradle Plugin
 wearCompose = "1.6.2"
 playServicesWearable = "19.0.0"
-billingKtx = "9.1.0"
+billingKtx = "8.2.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
