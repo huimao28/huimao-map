@@ -28,6 +28,13 @@ import com.baidu.location.BDLocation
 import com.baidu.location.LocationClient
 import com.baidu.location.LocationClientOption
 import com.baidu.mapapi.SDKInitializer
+import com.baidu.mapapi.map.MapStatus
+import com.baidu.mapapi.map.MapStatusUpdateFactory
+import com.baidu.mapapi.map.MapView
+import com.baidu.mapapi.map.MyLocationConfiguration
+import com.baidu.mapapi.map.MyLocationData
+import com.baidu.mapapi.map.PolylineOptions
+import com.baidu.mapapi.model.LatLng as BaiduLatLng
 import com.baidu.navisdk.adapter.BNRoutePlanNode
 import com.baidu.navisdk.adapter.BaiduNaviManagerFactory
 import com.baidu.navisdk.adapter.IBNTTSManager
