@@ -1036,10 +1036,10 @@ class NaviActivity : Activity() {
             Handler(Looper.getMainLooper()).postDelayed({
                 if (!closingNavi) syncRouteGeometryToCar()
             }, 3000)
-            // 车机地图小样 v2（诊断版）：MapView 改作可见小窗浮在诱导 View 左下角，
-            // 先确认它本身能渲染、截帧管线能出图；断点由车机画面的诊断行回报。
+            // 车机地图 v3：MapView 垫在诱导 View 底层按 1600x900 全尺寸渲染（手机端不可见），
+            // 截帧给车机当高清底图；导航期间屏幕常亮、MapView 不随 Activity 暂停，
+            // 保证它持续活跃渲染。诊断计数保留，车机诊断行可核对截帧成色。
             val container = android.widget.FrameLayout(this)
-            container.addView(view, android.widget.FrameLayout.LayoutParams(-1, -1))
             CarNavigationBridge.resetCarMapDiag()
             val mvResult = runCatching { MapView(this) }
             val mv = mvResult.getOrNull()
@@ -1051,15 +1051,16 @@ class NaviActivity : Activity() {
                 carMapView = mv
                 container.addView(
                     mv,
-                    android.widget.FrameLayout.LayoutParams(520, 300).apply {
-                        gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-                        setMargins(24, 0, 0, 300)
+                    android.widget.FrameLayout.LayoutParams(1600, 900).apply {
+                        gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
                     }
                 )
                 configureCarMap(mv)
                 runCatching { mv.onResume() }
             }
+            container.addView(view, android.widget.FrameLayout.LayoutParams(-1, -1))
             setContentView(container)
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             startCarMapSnapshots()
             // SDK 偶尔会从持久化调试设置恢复 common_debug_layout，正式版强制隐藏。
             val debugLayoutId = resources.getIdentifier("common_debug_layout", "id", packageName)
@@ -1196,7 +1197,7 @@ class NaviActivity : Activity() {
     }
     override fun onPause() {
         stopPhoneFrameCapture()
-        runCatching { carMapView?.onPause() }
+        // 车机地图的 MapView 不随 Activity 暂停：车机在后台/切走时仍需它继续渲染截帧。
         if (guideCreated) BaiduNaviManagerFactory.getRouteGuideManager().onPause()
         super.onPause()
     }
@@ -1206,6 +1207,7 @@ class NaviActivity : Activity() {
         stopCarMapSnapshots()
         runCatching { carMapView?.onDestroy() }
         carMapView = null
+        runCatching { window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
         try { BaiduNaviManagerFactory.getRoutePlanManager().removeRequestByHandler(routePlanHandler) } catch (_: Throwable) {}
         if (guideCreated) try {
             BaiduNaviManagerFactory.getRouteGuideManager().apply {
