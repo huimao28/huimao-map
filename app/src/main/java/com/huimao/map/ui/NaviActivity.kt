@@ -21,7 +21,11 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.Gravity
+import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.datastore.preferences.core.emptyPreferences
 import com.baidu.location.BDAbstractLocationListener
 import com.baidu.location.BDLocation
@@ -101,6 +105,17 @@ class NaviActivity : Activity() {
     private val carMapSnapshotHandler = Handler(Looper.getMainLooper())
     private var carMapSnapshotting = false
     private var firstCarMapFrameLogged = false
+
+    // ===== 模拟行驶探针（在家验证车机地图跟随/旋转用）：虚拟车沿路线喂点，默认关 =====
+    @Volatile private var probeDriving = false
+    private val probeHandler = Handler(Looper.getMainLooper())
+    private var probePoints: List<Pair<Double, Double>> = emptyList()
+    private var probeCumulative: DoubleArray = DoubleArray(0)
+    private var probeTotalMeters = 0.0
+    private var probeTraveledMeters = 0.0
+    private var probeButton: Button? = null
+    private val PROBE_SPEED_MPS = 22.0
+    private val PROBE_TICK_MS = 500L
 
     private val naviListener = object : IBNaviListener() {
         override fun onNaviGuideEnd() {
@@ -480,7 +495,8 @@ class NaviActivity : Activity() {
                     }
                     val valid = isUsableNavigationLocation(loc)
                     if (valid) {
-                        pushLocationToNaviEngine(loc)
+                        // 探针模拟行驶期间暂停真实定位喂点，位置全部由虚拟车提供。
+                        if (!probeDriving) pushLocationToNaviEngine(loc)
                     } else {
                         markCarLocationLost(loc)
                     }
@@ -1062,6 +1078,7 @@ class NaviActivity : Activity() {
             setContentView(container)
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             startCarMapSnapshots()
+            addProbeControls()
             // SDK 偶尔会从持久化调试设置恢复 common_debug_layout，正式版强制隐藏。
             val debugLayoutId = resources.getIdentifier("common_debug_layout", "id", packageName)
                 .takeIf { it != 0 } ?: resources.getIdentifier(
@@ -1084,6 +1101,144 @@ class NaviActivity : Activity() {
         } catch (e: Throwable) {
             Log.e(TAG, "Native guide create failed", e)
             diagnoseGuideLayout(e)
+        }
+    }
+
+    // ===== 模拟行驶探针：控制按钮 + 虚拟车沿路线喂点 =====
+    private fun addProbeControls() {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(6, 6, 6, 6)
+        }
+        val startBtn = Button(this).apply {
+            text = "▶ 开始模拟"
+            setOnClickListener { toggleProbeDriving() }
+        }
+        probeButton = startBtn
+        container.addView(startBtn)
+        val params = android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.END
+        )
+        params.topMargin = (190 * resources.displayMetrics.density).toInt()
+        params.marginEnd = (10 * resources.displayMetrics.density).toInt()
+        addContentView(container, params)
+    }
+
+    private fun toggleProbeDriving() {
+        if (probeDriving) {
+            stopProbeDriving()
+            Toast.makeText(this, "探针模拟已停止", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val points = loadFullRoutePoints()
+        if (points.size < 2) {
+            Toast.makeText(this, "探针：路线点不足，无法模拟", Toast.LENGTH_LONG).show()
+            return
+        }
+        probePoints = points
+        probeCumulative = DoubleArray(points.size)
+        var acc = 0.0
+        for (i in 1 until points.size) {
+            acc += distanceMeters(points[i - 1], points[i])
+            probeCumulative[i] = acc
+        }
+        probeTotalMeters = acc
+        probeTraveledMeters = 0.0
+        probeDriving = true
+        probeButton?.text = "⏹ 停止模拟"
+        Log.i(TAG, "Probe driving start: points=${points.size} total=${acc.toInt()}m speed=${PROBE_SPEED_MPS}m/s")
+        Toast.makeText(
+            this,
+            "探针模拟开始：全长 ${(acc / 1000).toInt()} 公里，约 ${(acc / PROBE_SPEED_MPS / 60).toInt()} 分钟跑完",
+            Toast.LENGTH_LONG
+        ).show()
+        probeHandler.removeCallbacks(probeTicker)
+        probeHandler.post(probeTicker)
+    }
+
+    private fun stopProbeDriving() {
+        probeDriving = false
+        probeHandler.removeCallbacks(probeTicker)
+        probeButton?.text = "▶ 开始模拟"
+    }
+
+    private val probeTicker = object : Runnable {
+        override fun run() {
+            if (!probeDriving) return
+            stepProbeCar()
+            if (probeDriving) probeHandler.postDelayed(this, PROBE_TICK_MS)
+        }
+    }
+
+    private fun stepProbeCar() {
+        probeTraveledMeters += PROBE_SPEED_MPS * (PROBE_TICK_MS / 1000.0)
+        if (probeTraveledMeters >= probeTotalMeters) {
+            val n = probePoints.size
+            pushProbeLocation(probePoints[n - 1], probePoints[n - 2])
+            Log.i(TAG, "Probe driving reached route end total=${probeTotalMeters.toInt()}m")
+            stopProbeDriving()
+            return
+        }
+        var idx = probeCumulative.indexOfFirst { it >= probeTraveledMeters }
+        if (idx < 1) idx = 1
+        val segStart = probeCumulative[idx - 1]
+        val segLen = (probeCumulative[idx] - segStart).coerceAtLeast(0.0001)
+        val frac = ((probeTraveledMeters - segStart) / segLen).coerceIn(0.0, 1.0)
+        val a = probePoints[idx - 1]
+        val b = probePoints[idx]
+        val point = (a.first + (b.first - a.first) * frac) to (a.second + (b.second - a.second) * frac)
+        pushProbeLocation(point, a)
+    }
+
+    private fun pushProbeLocation(point: Pair<Double, Double>, from: Pair<Double, Double>) {
+        val loc = BDLocation().apply {
+            latitude = point.first
+            longitude = point.second
+            radius = 12f
+            speed = (PROBE_SPEED_MPS * 3.6).toFloat()
+            direction = bearingDegrees(from, point).toFloat()
+            locType = BDLocation.TypeGpsLocation
+        }
+        pushLocationToNaviEngine(loc)
+    }
+
+    private fun distanceMeters(a: Pair<Double, Double>, b: Pair<Double, Double>): Double {
+        val out = FloatArray(1)
+        android.location.Location.distanceBetween(a.first, a.second, b.first, b.second, out)
+        return out[0].toDouble()
+    }
+
+    private fun bearingDegrees(a: Pair<Double, Double>, b: Pair<Double, Double>): Double {
+        val dLng = Math.toRadians(b.second - a.second)
+        val lat1 = Math.toRadians(a.first)
+        val lat2 = Math.toRadians(b.first)
+        val y = Math.sin(dLng) * Math.cos(lat2)
+        val x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
+        return (Math.toDegrees(Math.atan2(y, x)) + 360.0) % 360.0
+    }
+
+    private fun loadFullRoutePoints(): List<Pair<Double, Double>> {
+        return try {
+            val infos = BaiduNaviManagerFactory.getRoutePlanManager().getRoutePlanInfo()
+            val selected = BaiduNaviManagerFactory.getRoutePlanManager().selectRouteId
+            val routes = infos?.routeInfoLatLngLists.orEmpty()
+            val segments = routes.getOrNull(selected) ?: routes.firstOrNull().orEmpty()
+            val all = ArrayList<Pair<Double, Double>>()
+            segments.forEach { segment -> segment.forEach { p -> all.add(p.latitude to p.longitude) } }
+            val maxPoints = 8000
+            if (all.size <= maxPoints) {
+                all
+            } else {
+                val stride = all.size / maxPoints + 1
+                val sampled = all.filterIndexed { i, _ -> i % stride == 0 }.toMutableList()
+                if (sampled.last() != all.last()) sampled.add(all.last())
+                sampled
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "Probe route points load failed", e)
+            emptyList()
         }
     }
 
@@ -1203,6 +1358,7 @@ class NaviActivity : Activity() {
     }
     override fun onStop() { if (guideCreated) BaiduNaviManagerFactory.getRouteGuideManager().onStop(); super.onStop() }
     override fun onDestroy() {
+        if (probeDriving) stopProbeDriving()
         stopPhoneFrameCapture()
         stopCarMapSnapshots()
         runCatching { carMapView?.onDestroy() }
