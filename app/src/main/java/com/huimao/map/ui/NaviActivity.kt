@@ -42,6 +42,7 @@ import com.baidu.navisdk.adapter.struct.BNaviInitConfig
 import com.baidu.navisdk.tts.ITTSInitListener
 import com.huimao.map.data.AppSettingsKeys
 import com.huimao.map.data.dataStore
+import com.huimao.map.navigation.CarLane
 import com.huimao.map.navigation.CarNavigationBridge
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
@@ -84,6 +85,9 @@ class NaviActivity : Activity() {
     private var lastReliableLocationAt = 0L
     private var lastPushedLocation: BDLocation? = null
     private var routeLocationWaitStartedAt = 0L
+    private var lastLaneKey = ""
+    private var lastTurnIconKey = ""
+    private var lastEnlargeCaptureAt = 0L
 
     private val naviListener = object : IBNaviListener() {
         override fun onNaviGuideEnd() {
@@ -101,6 +105,92 @@ class NaviActivity : Activity() {
                     remainingTimeSeconds = remainingTime.coerceAtLeast(0))
             }
         }
+        override fun onLaneInfoUpdate(
+            action: IBNaviListener.Action?,
+            lanes: MutableList<com.baidu.navisdk.adapter.struct.BNavLineItem>?
+        ) {
+            // 车道回调同值会高频重复，只在内容变化时更新桥状态与图标。
+            if (action?.toString() == "HIDE" || lanes.isNullOrEmpty()) {
+                if (CarNavigationBridge.state.lanes.isNotEmpty()) {
+                    lastLaneKey = ""
+                    CarNavigationBridge.updateLaneIcons(emptyList())
+                    CarNavigationBridge.update { it.copy(lanes = emptyList()) }
+                }
+                return
+            }
+            val key = lanes.joinToString(",") { it.resName.orEmpty() }
+            if (key == lastLaneKey) return
+            lastLaneKey = key
+            // resName 形如 nsdk_ic_lane_turn_left_90 / nsdk_ic_lane_straight_gray：
+            // 去前缀得方向键，_gray 后缀表示不推荐通行（灰色），无后缀为推荐（高亮）。
+            val parsed = lanes.map { item ->
+                val raw = item.resName.orEmpty()
+                CarLane(
+                    direction = raw.removePrefix("nsdk_ic_lane_").removeSuffix("_gray"),
+                    recommended = !raw.endsWith("_gray")
+                )
+            }
+            CarNavigationBridge.updateLaneIcons(lanes.map { drawableToBitmap(it.drawable) })
+            CarNavigationBridge.update { it.copy(lanes = parsed) }
+        }
+        override fun onEnlargeMapUpdate(info: com.baidu.navisdk.adapter.struct.BNaviEnlargeMapInfo?) {
+            if (info == null) return
+            if (info.action?.toString() == "HIDE") {
+                if (CarNavigationBridge.state.junctionActive) {
+                    CarNavigationBridge.clearJunctionFrame()
+                    CarNavigationBridge.update { it.copy(junctionActive = false, junctionRemainMeters = 0) }
+                }
+                return
+            }
+            val remain = info.remainDistance?.toIntOrNull() ?: 0
+            CarNavigationBridge.update { previous ->
+                previous.copy(
+                    junctionActive = true,
+                    junctionRemainMeters = remain,
+                    // 放大图的剩余距离是当前最可靠的距路口距离，优先于面板解析值。
+                    distanceToTurnMeters = if (remain > 0) remain else previous.distanceToTurnMeters
+                )
+            }
+            // dynamicBitmap 恒为 null（2026-10-23 探针实测），只能截取百度给的 View。
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastEnlargeCaptureAt >= 500L) {
+                lastEnlargeCaptureAt = now
+                val enlargeView = info.enlargeMap
+                if (enlargeView != null) runOnUiThread { captureEnlargeView(enlargeView) }
+            }
+        }
+        override fun onHighWayInfoUpdate(
+            action: IBNaviListener.Action?,
+            info: com.baidu.navisdk.adapter.struct.BNHighwayInfo?
+        ) {
+            if (info == null || action?.toString() == "HIDE") {
+                if (CarNavigationBridge.state.highwayInfoText.isNotBlank()) {
+                    CarNavigationBridge.update { it.copy(highwayInfoText = "") }
+                }
+                return
+            }
+            val parts = ArrayList<String>()
+            info.exitName?.takeIf { it.isNotBlank() }?.let { name ->
+                val code = info.exitCode?.takeIf { it.isNotBlank() }?.let { "($it)" } ?: ""
+                val dist = info.exitRemainDist.takeIf { it >= 0 }?.let { formatDistanceForCar(it) } ?: ""
+                parts += "出口 $name$code $dist".trim()
+            }
+            info.gateName?.takeIf { it.isNotBlank() }?.let { name ->
+                val dist = info.gateRemainDist.takeIf { it >= 0 }?.let { formatDistanceForCar(it) } ?: ""
+                parts += "收费站 $name $dist".trim()
+            }
+            val service = listOfNotNull(
+                info.serviceName?.takeIf { it.isNotBlank() }?.let { it to info.serviceRemainDist },
+                info.service2Name?.takeIf { it.isNotBlank() }?.let { it to info.service2RemainDist }
+            ).minByOrNull { (_, d) -> if (d >= 0) d else Int.MAX_VALUE }
+            service?.let { (name, d) ->
+                parts += "服务区 $name ${if (d >= 0) formatDistanceForCar(d) else ""}".trim()
+            }
+            val text = parts.joinToString(" · ")
+            if (text != CarNavigationBridge.state.highwayInfoText) {
+                CarNavigationBridge.update { it.copy(highwayInfoText = text) }
+            }
+        }
         override fun onGuideInfoUpdate(
             info: com.baidu.navisdk.adapter.struct.BNaviInfo?,
             panel: com.baidu.navisdk.adapter.struct.GuidePanelMessage?
@@ -111,6 +201,13 @@ class NaviActivity : Activity() {
             val callbackDistance = info.distance.takeIf { it > 0 }
             val iconName = info.turnIconName.orEmpty()
             val roadName = info.roadName.orEmpty()
+            // 百度直接给的转向图标位图同步给车机端自绘卡片使用（按图标名去重）。
+            info.turnIcon?.let { icon ->
+                if (iconName != lastTurnIconKey) {
+                    lastTurnIconKey = iconName
+                    CarNavigationBridge.updateTurnIcon(icon)
+                }
+            }
 
             // 回调可能不在主线程，且触发时百度原生 View 可能还没完成这一帧文本更新。
             // 先用回调立即更新兜底，再在主线程当前帧和下一帧读取手机端最终渲染结果覆盖。
@@ -722,7 +819,40 @@ class NaviActivity : Activity() {
         return 0
     }
 
-    // Android Auto 已暂时移除；保留简单的内部转向分类，供手机端状态使用。
+    private fun drawableToBitmap(drawable: android.graphics.drawable.Drawable?): Bitmap? {
+        if (drawable == null) return null
+        val w = drawable.intrinsicWidth.takeIf { it > 0 } ?: 72
+        val h = drawable.intrinsicHeight.takeIf { it > 0 } ?: 72
+        return runCatching {
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bmp)
+            drawable.setBounds(0, 0, w, h)
+            drawable.draw(canvas)
+            bmp
+        }.getOrNull()
+    }
+
+    /** 把百度路口放大图 View 截成位图存入桥，供车机端 Surface 绘制。必须在主线程调用。 */
+    private fun captureEnlargeView(view: View) {
+        runCatching {
+            if (view.width <= 0 || view.height <= 0) {
+                val ws = View.MeasureSpec.makeMeasureSpec(720, View.MeasureSpec.EXACTLY)
+                val hs = View.MeasureSpec.makeMeasureSpec(540, View.MeasureSpec.EXACTLY)
+                view.measure(ws, hs)
+                view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+            }
+            if (view.width <= 0 || view.height <= 0) return
+            val bmp = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            view.draw(android.graphics.Canvas(bmp))
+            CarNavigationBridge.updateJunctionFrame(bmp)
+        }.onFailure { Log.w(TAG, "Enlarge view capture failed", it) }
+    }
+
+    private fun formatDistanceForCar(meters: Int): String = if (meters >= 1000) {
+        String.format(Locale.US, "%.1f公里", meters / 1000.0)
+    } else "${meters.coerceAtLeast(0)}米"
+
+    // 内部转向分类：编码与 NavCarService 中的 Maneuver 类型映射一一对应。
     private fun inferCarManeuver(iconName: String, cue: String): Int {
         val text = "$iconName $cue".lowercase()
         return when {

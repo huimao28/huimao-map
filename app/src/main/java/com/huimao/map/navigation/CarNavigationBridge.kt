@@ -23,7 +23,20 @@ data class CarNavigationState(
     val locationReliable: Boolean = true,
     val inertialNavigation: Boolean = false,
     val routePoints: List<Pair<Double, Double>> = emptyList(),
-    val destinationName: String = "目的地"
+    val destinationName: String = "目的地",
+    /** 当前路口的车道建议（百度 onLaneInfoUpdate 解码结果），无车道信息时为空。 */
+    val lanes: List<CarLane> = emptyList(),
+    /** 路口放大图是否正在展示，以及距该路口的剩余距离（米）。 */
+    val junctionActive: Boolean = false,
+    val junctionRemainMeters: Int = 0,
+    /** 高速信息一行文案（出口/收费站/服务区），非高速场景为空。 */
+    val highwayInfoText: String = ""
+)
+
+/** 一条车道的呈现模型：direction 为百度车道图标名解码出的方向键，recommended 为是否推荐通行。 */
+data class CarLane(
+    val direction: String,
+    val recommended: Boolean
 )
 
 /** 手机端百度导航与 Android Auto CarAppService 之间的进程内状态桥。 */
@@ -95,10 +108,79 @@ object CarNavigationBridge {
 
     fun stop() = update {
         clearPhoneFrame()
+        clearJunctionFrame()
+        updateLaneIcons(emptyList())
         CarNavigationState()
     }
 
     fun setRoutePoints(points: List<Pair<Double, Double>>) = update { it.copy(routePoints = points) }
+
+    // ===== 车道图标 / 路口放大图 / 转向图标（位图不进 State，单独保存，与 phoneFrame 同模式） =====
+    @Volatile private var laneIcons: List<Bitmap> = emptyList()
+
+    @Synchronized
+    fun updateLaneIcons(icons: List<Bitmap?>) {
+        val old = laneIcons
+        laneIcons = icons.mapNotNull { bmp ->
+            bmp?.takeUnless { it.isRecycled }?.let {
+                runCatching { it.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull()
+            }
+        }
+        old.forEach { if (!it.isRecycled) runCatching { it.recycle() } }
+    }
+
+    fun laneIconsSnapshot(): List<Bitmap> = laneIcons
+
+    @Volatile private var junctionFrame: Bitmap? = null
+    @Volatile var junctionFrameTimeMs: Long = 0L
+        private set
+
+    @Synchronized
+    fun updateJunctionFrame(source: Bitmap) {
+        val copy = runCatching { source.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull() ?: return
+        val old = junctionFrame
+        junctionFrame = copy
+        junctionFrameTimeMs = System.currentTimeMillis()
+        if (old != null && !old.isRecycled) runCatching { old.recycle() }
+        listeners.forEach { runCatching { it() } }
+    }
+
+    @Synchronized
+    fun drawJunctionFrame(canvas: Canvas, dest: Rect, paint: Paint): Boolean {
+        val frame = junctionFrame ?: return false
+        if (frame.isRecycled || frame.width <= 0 || frame.height <= 0) return false
+        return runCatching {
+            canvas.drawBitmap(frame, null, dest, paint)
+            true
+        }.getOrDefault(false)
+    }
+
+    /** 路口放大图的宽高比，未知时按 4:3 兜底。 */
+    fun junctionFrameAspect(): Float {
+        val frame = junctionFrame ?: return 4f / 3f
+        if (frame.height <= 0) return 4f / 3f
+        return frame.width.toFloat() / frame.height.toFloat()
+    }
+
+    @Synchronized
+    fun clearJunctionFrame() {
+        val old = junctionFrame
+        junctionFrame = null
+        junctionFrameTimeMs = 0L
+        if (old != null && !old.isRecycled) runCatching { old.recycle() }
+    }
+
+    @Volatile private var turnIcon: Bitmap? = null
+
+    @Synchronized
+    fun updateTurnIcon(source: Bitmap) {
+        val copy = runCatching { source.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull() ?: return
+        val old = turnIcon
+        turnIcon = copy
+        if (old != null && !old.isRecycled) runCatching { old.recycle() }
+    }
+
+    fun turnIconSnapshot(): Bitmap? = turnIcon?.takeUnless { it.isRecycled }
 
     fun addListener(listener: () -> Unit) { listeners += listener }
     fun removeListener(listener: () -> Unit) { listeners -= listener }

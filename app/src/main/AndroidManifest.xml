@@ -33,7 +33,10 @@
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
 
-    <!-- Android Auto 已暂时移除；Wear OS 适配使用独立模块。 -->
+    <!-- Android Auto（Car App Library 导航模板与 Surface 自绘） -->
+    <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
+    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
+    <uses-permission android:name="androidx.car.app.MAP_TEMPLATES" />
 
     <application
         android:name=".BaiduNaviApplication"
@@ -51,7 +54,13 @@
             android:name="com.baidu.lbsapi.API_KEY"
             android:value="PLACEHOLDER_AK" />
 
-        <!-- Android Auto 元数据已暂时移除。 -->
+        <!-- Android Auto：最低 Car API 级别与应用描述文件 -->
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1" />
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
 
         <activity
             android:name=".ui.MainActivity"
@@ -85,7 +94,15 @@
                 <data android:scheme="baidunaviauto" android:host="navigate" />
             </intent-filter>
 
-            <!-- Android Auto 导航意图已暂时移除。 -->
+            <!--
+              Android Auto / 语音助手下发目的地使用的 NAVIGATE 意图。
+              投屏场景下该过滤器必须声明在 Activity 上，车机端才能下发目的地。
+            -->
+            <intent-filter>
+                <action android:name="androidx.car.app.action.NAVIGATE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="geo" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -105,7 +122,16 @@
             android:enabled="true"
             android:process=":remote" />
 
-        <!-- Android Auto 服务已暂时移除。 -->
+        <!-- Android Auto CarAppService（导航类） -->
+        <service
+            android:name=".navigation.NavCarService"
+            android:exported="true"
+            android:foregroundServiceType="location">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.NAVIGATION" />
+            </intent-filter>
+        </service>
 
     </application>
 </manifest>
