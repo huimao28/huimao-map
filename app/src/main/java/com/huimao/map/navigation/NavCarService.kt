@@ -349,6 +349,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             drawInstructionCard(canvas)
             drawJunctionCard(canvas)
             drawLaneStrip(canvas)
+            drawCarMapDiag(canvas)
         } catch (e: Throwable) {
             android.util.Log.w("NavCarBaidu", "Baidu frame render failed", e)
         } finally {
@@ -492,6 +493,25 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
                 canvas.drawText(symbol, cx, top + stripH / 2f + 16f, arrowPaint)
             }
         }
+    }
+
+    /** 小样诊断行：左下角回报手机端 MapView 各环节状态，定位截帧断点用（验证后移除）。 */
+    private fun drawCarMapDiag(canvas: Canvas) {
+        if (!CarNavigationBridge.state.navigating) return
+        val age = if (CarNavigationBridge.carMapFrameTimeMs > 0L) {
+            "${(System.currentTimeMillis() - CarNavigationBridge.carMapFrameTimeMs) / 1000}秒前"
+        } else "无"
+        val created = if (CarNavigationBridge.carMapDiagCreated) "OK"
+            else "失败 ${CarNavigationBridge.carMapDiagCreateError}"
+        val text = "诊断 创建:$created 加载:${if (CarNavigationBridge.carMapDiagLoaded) "OK" else "未"} " +
+            "定位:${CarNavigationBridge.carMapDiagLocFeeds} 截帧:${CarNavigationBridge.carMapDiagSnapshotCalls} " +
+            "空:${CarNavigationBridge.carMapDiagSnapshotNulls} 尺寸:${CarNavigationBridge.carMapDiagLastSize} 帧:$age"
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.YELLOW
+            textSize = 19f
+            setShadowLayer(3f, 0f, 0f, Color.BLACK)
+        }
+        canvas.drawText(text, 16f, surfaceHeight - 14f, paint)
     }
 
     private fun formatMeters(meters: Int): String = if (meters >= 1000) {

@@ -141,6 +141,25 @@ object CarNavigationBridge {
         if (old != null && !old.isRecycled) runCatching { old.recycle() }
     }
 
+    // ===== 车机地图小样诊断（临时：车机画面回报各环节状态，定位截帧断点） =====
+    @Volatile var carMapDiagCreated: Boolean = false
+    @Volatile var carMapDiagCreateError: String = ""
+    @Volatile var carMapDiagLoaded: Boolean = false
+    @Volatile var carMapDiagSnapshotCalls: Int = 0
+    @Volatile var carMapDiagSnapshotNulls: Int = 0
+    @Volatile var carMapDiagLastSize: String = "-"
+    @Volatile var carMapDiagLocFeeds: Int = 0
+
+    fun resetCarMapDiag() {
+        carMapDiagCreated = false
+        carMapDiagCreateError = ""
+        carMapDiagLoaded = false
+        carMapDiagSnapshotCalls = 0
+        carMapDiagSnapshotNulls = 0
+        carMapDiagLastSize = "-"
+        carMapDiagLocFeeds = 0
+    }
+
     // ===== 车道图标 / 路口放大图 / 转向图标（位图不进 State，单独保存，与 phoneFrame 同模式） =====
     @Volatile private var laneIcons: List<Bitmap> = emptyList()
 

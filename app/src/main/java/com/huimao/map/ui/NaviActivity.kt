@@ -578,6 +578,7 @@ class NaviActivity : Activity() {
             // 每秒强制地图中心会覆盖 SDK 的路线视野并把页面锁在缓存位置。
             // 车机地图小样：同一份 BD09 定位喂给 MapView 定位层（主线程）。
             runOnUiThread {
+                CarNavigationBridge.carMapDiagLocFeeds++
                 carMapView?.map?.let { map ->
                     runCatching {
                         map.setMyLocationData(
@@ -887,6 +888,10 @@ class NaviActivity : Activity() {
             val map = mv.map ?: return
             map.isMyLocationEnabled = true
             map.setTrafficEnabled(true)
+            map.setOnMapLoadedCallback {
+                CarNavigationBridge.carMapDiagLoaded = true
+                Log.i(TAG, "CarMap spike: map loaded")
+            }
             map.setMyLocationConfiguration(
                 MyLocationConfiguration(
                     MyLocationConfiguration.LocationMode.FOLLOWING,
@@ -907,17 +912,21 @@ class NaviActivity : Activity() {
             if (!guideCreated || closingNavi) { carMapSnapshotting = false; return }
             val map = carMapView?.map
             if (map != null) {
+                CarNavigationBridge.carMapDiagSnapshotCalls++
                 runCatching {
                     map.snapshot { bmp ->
                         if (bmp != null) {
+                            CarNavigationBridge.carMapDiagLastSize = "${bmp.width}x${bmp.height}"
                             if (!firstCarMapFrameLogged) {
                                 firstCarMapFrameLogged = true
                                 Log.i(TAG, "CarMap spike: first snapshot ${bmp.width}x${bmp.height}")
                             }
                             CarNavigationBridge.updateCarMapFrame(bmp)
+                        } else {
+                            CarNavigationBridge.carMapDiagSnapshotNulls++
                         }
                     }
-                }
+                }.onFailure { CarNavigationBridge.carMapDiagSnapshotNulls++ }
             }
             carMapSnapshotHandler.postDelayed(this, 600L)
         }
@@ -1027,22 +1036,29 @@ class NaviActivity : Activity() {
             Handler(Looper.getMainLooper()).postDelayed({
                 if (!closingNavi) syncRouteGeometryToCar()
             }, 3000)
-            // 车机地图小样：诱导 View 底下垫一张百度原生 MapView（横向 1600x900 渲染），
-            // 截帧给车机当底图。诱导 View 全屏盖在上面，用户在手机端看不到它。
+            // 车机地图小样 v2（诊断版）：MapView 改作可见小窗浮在诱导 View 左下角，
+            // 先确认它本身能渲染、截帧管线能出图；断点由车机画面的诊断行回报。
             val container = android.widget.FrameLayout(this)
-            val mv = runCatching { MapView(this) }.getOrNull()
+            container.addView(view, android.widget.FrameLayout.LayoutParams(-1, -1))
+            CarNavigationBridge.resetCarMapDiag()
+            val mvResult = runCatching { MapView(this) }
+            val mv = mvResult.getOrNull()
+            CarNavigationBridge.carMapDiagCreated = mv != null
+            CarNavigationBridge.carMapDiagCreateError =
+                mvResult.exceptionOrNull()
+                    ?.let { "${it.javaClass.simpleName}: ${it.message}".take(60) } ?: ""
             if (mv != null) {
                 carMapView = mv
                 container.addView(
                     mv,
-                    android.widget.FrameLayout.LayoutParams(1600, 900).apply {
-                        gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+                    android.widget.FrameLayout.LayoutParams(520, 300).apply {
+                        gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
+                        setMargins(24, 0, 0, 300)
                     }
                 )
                 configureCarMap(mv)
                 runCatching { mv.onResume() }
             }
-            container.addView(view, android.widget.FrameLayout.LayoutParams(-1, -1))
             setContentView(container)
             startCarMapSnapshots()
             // SDK 偶尔会从持久化调试设置恢复 common_debug_layout，正式版强制隐藏。
