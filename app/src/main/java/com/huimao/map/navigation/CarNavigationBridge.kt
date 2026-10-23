@@ -108,12 +108,38 @@ object CarNavigationBridge {
 
     fun stop() = update {
         clearPhoneFrame()
+        clearCarMapFrame()
         clearJunctionFrame()
         updateLaneIcons(emptyList())
         CarNavigationState()
     }
 
     fun setRoutePoints(points: List<Pair<Double, Double>>) = update { it.copy(routePoints = points) }
+
+    // ===== 车机地图截帧（百度原生 MapView 小样验证用，与 phoneFrame 同模式） =====
+    @Volatile private var carMapFrame: Bitmap? = null
+    @Volatile var carMapFrameTimeMs: Long = 0L
+        private set
+
+    @Synchronized
+    fun updateCarMapFrame(source: Bitmap) {
+        val copy = runCatching { source.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull() ?: return
+        val old = carMapFrame
+        carMapFrame = copy
+        carMapFrameTimeMs = System.currentTimeMillis()
+        if (old != null && !old.isRecycled) runCatching { old.recycle() }
+        listeners.forEach { runCatching { it() } }
+    }
+
+    fun carMapFrameSnapshot(): Bitmap? = carMapFrame?.takeUnless { it.isRecycled }
+
+    @Synchronized
+    fun clearCarMapFrame() {
+        val old = carMapFrame
+        carMapFrame = null
+        carMapFrameTimeMs = 0L
+        if (old != null && !old.isRecycled) runCatching { old.recycle() }
+    }
 
     // ===== 车道图标 / 路口放大图 / 转向图标（位图不进 State，单独保存，与 phoneFrame 同模式） =====
     @Volatile private var laneIcons: List<Bitmap> = emptyList()

@@ -316,16 +316,27 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             canvas.drawColor(Color.rgb(28, 35, 42))
             val mapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 
+            // 小样验证：优先绘制手机端百度原生 MapView 的截帧（真实底图 + 路线 + 路况 + 跟随旋转）。
+            val carMapBitmap = CarNavigationBridge.carMapFrameSnapshot()
+            val carMapFresh = System.currentTimeMillis() - CarNavigationBridge.carMapFrameTimeMs <= 2_500L
+            val drewCarMap = if (carMapFresh && carMapBitmap != null && !carMapBitmap.isRecycled &&
+                carMapBitmap.width > 0 && carMapBitmap.height > 0
+            ) {
+                val src = centerCrop(carMapBitmap.width, carMapBitmap.height, surfaceWidth, surfaceHeight)
+                canvas.drawBitmap(carMapBitmap, src, Rect(0, 0, surfaceWidth, surfaceHeight), mapPaint)
+                true
+            } else false
+
             // 车机端优先绘制百度 MiniMap 生成的横向地图图层。
             // 手机端导航截图只作为兜底，避免竖屏截图在横屏车机上被 center-crop 后只剩大色块。
-            val drewBaiduMap = if (bitmap != null && !bitmap.isRecycled && bitmap.width > 0 && bitmap.height > 0) {
+            val drewBaiduMap = if (!drewCarMap && bitmap != null && !bitmap.isRecycled && bitmap.width > 0 && bitmap.height > 0) {
                 lastBaiduBitmapAt = System.currentTimeMillis()
                 val src = centerCrop(bitmap.width, bitmap.height, surfaceWidth, surfaceHeight)
                 canvas.drawBitmap(bitmap, src, Rect(0, 0, surfaceWidth, surfaceHeight), mapPaint)
                 true
             } else false
 
-            if (!drewBaiduMap) {
+            if (!drewCarMap && !drewBaiduMap) {
                 val phoneFrameFresh = System.currentTimeMillis() - CarNavigationBridge.phoneFrameTimeMs <= 2_000L
                 val drewPhoneFrame = if (phoneFrameFresh) {
                     CarNavigationBridge.drawPhoneFrame(canvas, Rect(0, 0, surfaceWidth, surfaceHeight), mapPaint)

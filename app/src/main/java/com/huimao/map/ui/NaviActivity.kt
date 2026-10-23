@@ -89,6 +89,12 @@ class NaviActivity : Activity() {
     private var lastTurnIconKey = ""
     private var lastEnlargeCaptureAt = 0L
 
+    // 车机地图小样：百度原生 MapView（藏在诱导 View 底下，横向大尺寸渲染后截帧喂车机）。
+    private var carMapView: MapView? = null
+    private val carMapSnapshotHandler = Handler(Looper.getMainLooper())
+    private var carMapSnapshotting = false
+    private var firstCarMapFrameLogged = false
+
     private val naviListener = object : IBNaviListener() {
         override fun onNaviGuideEnd() {
             // SDK 在重算路线、切换诱导页面时也可能短暂回调 guideEnd，不能据此直接退出。
@@ -563,6 +569,21 @@ class NaviActivity : Activity() {
             BaiduNaviManagerFactory.getMapManager().setMyLocationDataGjc02(data)
             // 不调用 setMapStatus：诱导页会根据导航引擎匹配位置自动跟车。
             // 每秒强制地图中心会覆盖 SDK 的路线视野并把页面锁在缓存位置。
+            // 车机地图小样：同一份 BD09 定位喂给 MapView 定位层（主线程）。
+            runOnUiThread {
+                carMapView?.map?.let { map ->
+                    runCatching {
+                        map.setMyLocationData(
+                            MyLocationData.Builder()
+                                .latitude(bdLoc.latitude)
+                                .longitude(bdLoc.longitude)
+                                .accuracy(bdLoc.radius.takeIf { it.isFinite() && it > 0f } ?: 12f)
+                                .direction(bdLoc.direction)
+                                .build()
+                        )
+                    }
+                }
+            }
         } catch (e: Throwable) { Log.w(TAG, "Push external navigation location failed", e) }
     }
 
@@ -848,6 +869,64 @@ class NaviActivity : Activity() {
         }.onFailure { Log.w(TAG, "Enlarge view capture failed", it) }
     }
 
+    /**
+     * 车机地图小样：配置垫在诱导 View 底下的百度原生 MapView。
+     * FOLLOWING 定位模式：地图自动跟随定位并按方向旋转（车头向上）；开路况图层。
+     */
+    private fun configureCarMap(mv: MapView) {
+        runCatching {
+            mv.showZoomControls(false)
+            mv.showScaleControl(false)
+            val map = mv.map ?: return
+            map.isMyLocationEnabled = true
+            map.setTrafficEnabled(true)
+            map.setMyLocationConfiguration(
+                MyLocationConfiguration(
+                    MyLocationConfiguration.LocationMode.FOLLOWING,
+                    true,
+                    null
+                )
+            )
+            map.animateMapStatus(
+                MapStatusUpdateFactory.newMapStatus(
+                    MapStatus.Builder().zoom(17.5f).overlook(-30).build()
+                )
+            )
+        }.onFailure { Log.w(TAG, "Car MapView configure failed", it) }
+    }
+
+    private val carMapSnapshotTicker = object : Runnable {
+        override fun run() {
+            if (!guideCreated || closingNavi) { carMapSnapshotting = false; return }
+            val map = carMapView?.map
+            if (map != null) {
+                runCatching {
+                    map.snapshot { bmp ->
+                        if (bmp != null) {
+                            if (!firstCarMapFrameLogged) {
+                                firstCarMapFrameLogged = true
+                                Log.i(TAG, "CarMap spike: first snapshot ${bmp.width}x${bmp.height}")
+                            }
+                            CarNavigationBridge.updateCarMapFrame(bmp)
+                        }
+                    }
+                }
+            }
+            carMapSnapshotHandler.postDelayed(this, 600L)
+        }
+    }
+
+    private fun startCarMapSnapshots() {
+        if (carMapSnapshotting) return
+        carMapSnapshotting = true
+        carMapSnapshotHandler.post(carMapSnapshotTicker)
+    }
+
+    private fun stopCarMapSnapshots() {
+        carMapSnapshotting = false
+        carMapSnapshotHandler.removeCallbacks(carMapSnapshotTicker)
+    }
+
     private fun formatDistanceForCar(meters: Int): String = if (meters >= 1000) {
         String.format(Locale.US, "%.1f公里", meters / 1000.0)
     } else "${meters.coerceAtLeast(0)}米"
@@ -894,6 +973,21 @@ class NaviActivity : Activity() {
                 if (sampled.lastOrNull() != pair) sampled.add(pair)
             }
             CarNavigationBridge.update { it.copy(routePoints = sampled) }
+            // 车机地图小样：同一条路线画进 MapView（BD09 原生坐标，零转换）。
+            runOnUiThread {
+                carMapView?.map?.let { map ->
+                    runCatching {
+                        map.clear()
+                        val pts = sampled.map { BaiduLatLng(it.first, it.second) }
+                        if (pts.size >= 2) {
+                            map.addOverlay(
+                                PolylineOptions().points(pts).width(14f)
+                                    .color(0xFF1689FF.toInt()).zIndex(10)
+                            )
+                        }
+                    }.onFailure { Log.w(TAG, "Car map polyline failed", it) }
+                }
+            }
             Log.i(TAG, "Synced ${sampled.size}/$total sampled route points to Android Auto")
         } catch (e: Throwable) {
             Log.w(TAG, "Route geometry sync failed", e)
@@ -926,7 +1020,24 @@ class NaviActivity : Activity() {
             Handler(Looper.getMainLooper()).postDelayed({
                 if (!closingNavi) syncRouteGeometryToCar()
             }, 3000)
-            setContentView(view)
+            // 车机地图小样：诱导 View 底下垫一张百度原生 MapView（横向 1600x900 渲染），
+            // 截帧给车机当底图。诱导 View 全屏盖在上面，用户在手机端看不到它。
+            val container = android.widget.FrameLayout(this)
+            val mv = runCatching { MapView(this) }.getOrNull()
+            if (mv != null) {
+                carMapView = mv
+                container.addView(
+                    mv,
+                    android.widget.FrameLayout.LayoutParams(1600, 900).apply {
+                        gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+                    }
+                )
+                configureCarMap(mv)
+                runCatching { mv.onResume() }
+            }
+            container.addView(view, android.widget.FrameLayout.LayoutParams(-1, -1))
+            setContentView(container)
+            startCarMapSnapshots()
             // SDK 偶尔会从持久化调试设置恢复 common_debug_layout，正式版强制隐藏。
             val debugLayoutId = resources.getIdentifier("common_debug_layout", "id", packageName)
                 .takeIf { it != 0 } ?: resources.getIdentifier(
@@ -1054,6 +1165,7 @@ class NaviActivity : Activity() {
     override fun onStart() { super.onStart(); if (guideCreated) BaiduNaviManagerFactory.getRouteGuideManager().onStart() }
     override fun onResume() {
         super.onResume()
+        runCatching { carMapView?.onResume() }
         if (guideCreated) {
             BaiduNaviManagerFactory.getRouteGuideManager().onResume()
             startPhoneFrameCapture()
@@ -1061,12 +1173,16 @@ class NaviActivity : Activity() {
     }
     override fun onPause() {
         stopPhoneFrameCapture()
+        runCatching { carMapView?.onPause() }
         if (guideCreated) BaiduNaviManagerFactory.getRouteGuideManager().onPause()
         super.onPause()
     }
     override fun onStop() { if (guideCreated) BaiduNaviManagerFactory.getRouteGuideManager().onStop(); super.onStop() }
     override fun onDestroy() {
         stopPhoneFrameCapture()
+        stopCarMapSnapshots()
+        runCatching { carMapView?.onDestroy() }
+        carMapView = null
         try { BaiduNaviManagerFactory.getRoutePlanManager().removeRequestByHandler(routePlanHandler) } catch (_: Throwable) {}
         if (guideCreated) try {
             BaiduNaviManagerFactory.getRouteGuideManager().apply {
