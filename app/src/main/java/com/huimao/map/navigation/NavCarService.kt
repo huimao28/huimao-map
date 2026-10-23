@@ -297,8 +297,8 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
      * 1 直行 / 2 左转 / 3 右转 / 4 靠左 / 5 靠右 / 6 到达 / 7 掉头，其余按直行兜底。
      */
     private fun carManeuverType(internal: Int): Int = when (internal) {
-        2 -> Maneuver.TYPE_TURN_LEFT
-        3 -> Maneuver.TYPE_TURN_RIGHT
+        2 -> Maneuver.TYPE_TURN_NORMAL_LEFT
+        3 -> Maneuver.TYPE_TURN_NORMAL_RIGHT
         4 -> Maneuver.TYPE_TURN_SLIGHT_LEFT
         5 -> Maneuver.TYPE_TURN_SLIGHT_RIGHT
         6 -> Maneuver.TYPE_DESTINATION
