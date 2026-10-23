@@ -36,8 +36,6 @@ import androidx.car.app.navigation.model.TravelEstimate
 import androidx.car.app.validation.HostValidator
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
-import com.baidu.navisdk.adapter.BaiduNaviManagerFactory
-import com.baidu.navisdk.adapter.IBNMiniMapViewManager
 import com.huimao.map.ui.LocationRedirectActivity
 import java.util.Locale
 import java.util.TimeZone
@@ -88,15 +86,11 @@ class NavCarSession : Session() {
 class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     private val navigationManager = carContext.getCarService(NavigationManager::class.java)
     private val appManager = carContext.getCarService(AppManager::class.java)
-    private val miniMap: IBNMiniMapViewManager by lazy { BaiduNaviManagerFactory.getMiniMap() }
     private val frameHandler = Handler(Looper.getMainLooper())
     @Volatile private var carSurface: Surface? = null
     @Volatile private var surfaceWidth = 0
     @Volatile private var surfaceHeight = 0
     private var navigationAnnounced = false
-    private var miniMapCreated = false
-    private var miniMapView: View? = null
-    private var lastBaiduBitmapAt = 0L
     private var tickerScheduled = false
     private var pendingInvalidate = false
     private var lastInvalidateAt = 0L
@@ -158,11 +152,6 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
             carSurface = container.surface
             surfaceWidth = container.width
             surfaceHeight = container.height
-            // Android Auto 主机通常是横屏 Surface；重新按车机尺寸布局百度 MiniMap，
-            // 避免沿用手机竖屏导航截图导致画面被裁剪成大色块。
-            miniMapView?.let { layoutMiniMapView(it) }
-            ensureMiniMap()
-            miniMapView?.let { layoutMiniMapView(it) }
             renderMap()
             frameHandler.removeCallbacks(frameTicker)
             tickerScheduled = false
@@ -179,7 +168,6 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     private val bridgeListener: () -> Unit = {
         carContext.mainExecutor.execute {
             publishTrip()
-            ensureMiniMap()
             renderMap()
             ensureFrameTicker()
             scheduleInvalidate()
@@ -205,47 +193,10 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
                 pendingInvalidate = false
                 appManager.setSurfaceCallback(null)
                 carSurface = null
-                if (miniMapCreated) runCatching {
-                    miniMap.onPause()
-                    miniMap.openBackgroundDrawNavi(false)
-                    miniMap.onDestroy()
-                }
-                miniMapView = null
-                miniMapCreated = false
                 CarNavigationBridge.removeListener(bridgeListener)
                 navigationManager.clearNavigationManagerCallback()
             }
         })
-    }
-
-    private fun ensureMiniMap() {
-        if (miniMapCreated || !CarNavigationBridge.state.navigating) return
-        runCatching {
-            miniMapView = miniMap.onCreate(carContext)
-            miniMapView?.let { layoutMiniMapView(it) }
-            miniMap.touchAble(false)
-            miniMap.setNaviMode(IBNMiniMapViewManager.NaviMode.NORMAL)
-            miniMap.setMapElementShow(true)
-            miniMap.setIconElementShow(true)
-            miniMap.setTrafficEnabled(true)
-            miniMap.openBackgroundDrawNavi(true)
-            miniMap.onResume()
-            miniMapCreated = true
-            android.util.Log.i("NavCarBaidu", "Baidu background map initialized with offscreen view ${surfaceWidth}x${surfaceHeight}")
-        }.onFailure {
-            android.util.Log.e("NavCarBaidu", "Baidu background map init failed", it)
-        }
-    }
-
-    private fun layoutMiniMapView(view: View) {
-        val width = surfaceWidth.takeIf { it > 0 } ?: 1280
-        val height = surfaceHeight.takeIf { it > 0 } ?: 720
-        val widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY)
-        val heightSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
-        view.measure(widthSpec, heightSpec)
-        view.layout(0, 0, width, height)
-        runCatching { miniMap.setFullViewMarginSize(0, 0, 0, 0) }
-        runCatching { miniMap.fullView(true) }
     }
 
     override fun onGetTemplate(): Template {
@@ -309,31 +260,20 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     private fun renderMap() {
         val surface = carSurface ?: return
         if (!surface.isValid || surfaceWidth <= 0 || surfaceHeight <= 0) return
-        val bitmap = if (miniMapCreated) runCatching { miniMap.getMapViewBitmap() }.getOrNull() else null
         var canvas: Canvas? = null
         try {
             canvas = surface.lockCanvas(null)
             canvas.drawColor(Color.rgb(28, 35, 42))
             val mapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 
-            // 车机端优先绘制百度 MiniMap 生成的横向地图图层。
-            // 手机端导航截图只作为兜底，避免竖屏截图在横屏车机上被 center-crop 后只剩大色块。
-            val drewBaiduMap = if (bitmap != null && !bitmap.isRecycled && bitmap.width > 0 && bitmap.height > 0) {
-                lastBaiduBitmapAt = System.currentTimeMillis()
-                val src = centerCrop(bitmap.width, bitmap.height, surfaceWidth, surfaceHeight)
-                canvas.drawBitmap(bitmap, src, Rect(0, 0, surfaceWidth, surfaceHeight), mapPaint)
-                true
-            } else false
-
-            if (!drewBaiduMap) {
+            // 地图层：用桥里的真实路线几何自绘（车位居中、车头向上）。
+            val drewRoute = drawSelfDrawnMap(canvas)
+            if (!drewRoute) {
+                // 路线几何还没同步过来时先用手机端导航截帧兜底，再不行只在底部留一句小提示。
                 val phoneFrameFresh = System.currentTimeMillis() - CarNavigationBridge.phoneFrameTimeMs <= 2_000L
-                val drewPhoneFrame = if (phoneFrameFresh) {
+                val drewPhoneFrame = phoneFrameFresh &&
                     CarNavigationBridge.drawPhoneFrame(canvas, Rect(0, 0, surfaceWidth, surfaceHeight), mapPaint)
-                } else false
-                if (!drewPhoneFrame) {
-                    miniMapView?.let { layoutMiniMapView(it) }
-                    drawFallbackNavigation(canvas)
-                }
+                if (!drewPhoneFrame) drawSyncHint(canvas)
             }
             drawInstructionCard(canvas)
             drawJunctionCard(canvas)
@@ -487,71 +427,169 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         String.format(Locale.US, "%.1f 公里", meters / 1000.0)
     } else "${meters.coerceAtLeast(0)} 米"
 
-    private fun drawFallbackNavigation(canvas: Canvas) {
+    /**
+     * 自绘地图层：把桥里的真实路线几何投影到车机画面。
+     * 路线点与车位同为 BD09，内部自洽、无需坐标转换；车位锚定画面下方居中，车头向上。
+     * 返回 false 表示路线/位置还没就绪，调用方走兜底。
+     */
+    private fun drawSelfDrawnMap(canvas: Canvas): Boolean {
         val state = CarNavigationBridge.state
+        val points = CarNavigationBridge.fullRoutePointsSnapshot().ifEmpty { state.routePoints }
+        if (points.size < 2 || state.latitude == 0.0 || state.longitude == 0.0) return false
         val w = surfaceWidth.toFloat()
         val h = surfaceHeight.toFloat()
-        val routePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(46, 135, 255)
-            strokeWidth = 18f
+        val anchorX = w * 0.5f
+        val anchorY = h * 0.74f
+        // 视野分档：前方可见距离（路口放大时拉近、高速时放远）。
+        val visibleMeters = when {
+            state.junctionActive && state.junctionRemainMeters in 1..400 -> 340f
+            state.distanceToTurnMeters in 1..250 -> 400f
+            state.speedKmh >= 80 -> 1800f
+            state.speedKmh >= 50 -> 1150f
+            state.speedKmh >= 25 -> 780f
+            else -> 540f
+        }
+        val pxPerMeter = anchorY / visibleMeters
+        val bearingRad = Math.toRadians((state.bearing.takeIf { it.isFinite() } ?: 0f).toDouble())
+        val sinB = Math.sin(bearingRad)
+        val cosB = Math.cos(bearingRad)
+        val cosLat = Math.cos(Math.toRadians(state.latitude))
+        val margin = 240f
+        fun project(lat: Double, lng: Double): FloatArray {
+            val dxM = (lng - state.longitude) * 111_320.0 * cosLat
+            val dyM = (lat - state.latitude) * 110_540.0
+            val right = dxM * cosB - dyM * sinB
+            val fwd = dxM * sinB + dyM * cosB
+            return floatArrayOf(
+                anchorX + (right * pxPerMeter).toFloat(),
+                anchorY - (fwd * pxPerMeter).toFloat()
+            )
+        }
+        fun inView(x: Float, y: Float): Boolean =
+            x >= -margin && x <= w + margin && y >= -margin && y <= h + margin
+
+        // 离车位最近的路线点作为已行/未行分界。
+        var nearest = 0
+        var best = Double.MAX_VALUE
+        points.forEachIndexed { i, p ->
+            val dLat = p.first - state.latitude
+            val dLng = (p.second - state.longitude) * cosLat
+            val d2 = dLat * dLat + dLng * dLng
+            if (d2 < best) { best = d2; nearest = i }
+        }
+
+        fun buildPath(from: Int, to: Int): android.graphics.Path {
+            val path = android.graphics.Path()
+            var penDown = false
+            var prevX = 0f
+            var prevY = 0f
+            for (i in from..to) {
+                val xy = project(points[i].first, points[i].second)
+                val x = xy[0]
+                val y = xy[1]
+                if (inView(x, y)) {
+                    if (!penDown) {
+                        if (i > from) path.moveTo(prevX, prevY) else path.moveTo(x, y)
+                        penDown = true
+                    }
+                    path.lineTo(x, y)
+                } else if (penDown) {
+                    path.lineTo(x, y)
+                    penDown = false
+                }
+                prevX = x
+                prevY = y
+            }
+            return path
+        }
+
+        val remainingPath = buildPath(nearest, points.size - 1)
+        val traveledPath = buildPath(0, nearest)
+        val casingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(10, 16, 24)
             style = Paint.Style.STROKE
+            strokeWidth = 30f
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
-        val shadowPaint = Paint(routePaint).apply {
-            color = Color.argb(130, 0, 0, 0)
-            strokeWidth = 28f
+        val traveledPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(96, 116, 134)
+            style = Paint.Style.STROKE
+            strokeWidth = 17f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
         }
-        val carPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textSize = 28f
-            textAlign = Paint.Align.CENTER
+        val routePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(46, 135, 255)
+            style = Paint.Style.STROKE
+            strokeWidth = 17f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
         }
-        val smallPaint = Paint(textPaint).apply { textSize = 22f; color = Color.rgb(190, 205, 215) }
+        canvas.drawPath(remainingPath, casingPaint)
+        canvas.drawPath(traveledPath, traveledPaint)
+        canvas.drawPath(remainingPath, routePaint)
 
-        val path = android.graphics.Path().apply {
-            moveTo(w * 0.50f, h * 0.78f)
-            cubicTo(w * 0.50f, h * 0.62f, w * 0.56f, h * 0.54f, w * 0.60f, h * 0.42f)
-            cubicTo(w * 0.66f, h * 0.27f, w * 0.56f, h * 0.17f, w * 0.50f, h * 0.10f)
+        // 终点标记（在视野内时）。
+        val destXy = project(points.last().first, points.last().second)
+        if (inView(destXy[0], destXy[1])) {
+            val pinPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.rgb(255, 84, 84)
+                style = Paint.Style.FILL
+            }
+            val pinStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                style = Paint.Style.STROKE
+                strokeWidth = 4f
+            }
+            canvas.drawCircle(destXy[0], destXy[1], 15f, pinPaint)
+            canvas.drawCircle(destXy[0], destXy[1], 15f, pinStroke)
         }
-        canvas.drawPath(path, shadowPaint)
-        canvas.drawPath(path, routePaint)
 
-        canvas.save()
-        canvas.translate(w * 0.50f, h * 0.78f)
-        canvas.rotate(state.bearing.takeIf { it.isFinite() } ?: 0f)
-        val car = android.graphics.Path().apply {
-            moveTo(0f, -32f)
-            lineTo(20f, 26f)
-            lineTo(0f, 14f)
-            lineTo(-20f, 26f)
+        // 车标：地图已按车头方向旋转，箭头恒指向上方。
+        val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(90, 0, 0, 0)
+            style = Paint.Style.FILL
+        }
+        canvas.drawCircle(anchorX, anchorY, 30f, shadow)
+        val arrow = android.graphics.Path().apply {
+            moveTo(anchorX, anchorY - 34f)
+            lineTo(anchorX + 21f, anchorY + 27f)
+            lineTo(anchorX, anchorY + 15f)
+            lineTo(anchorX - 21f, anchorY + 27f)
             close()
         }
-        canvas.drawPath(car, carPaint)
-        canvas.restore()
-
-        val status = when {
-            state.inertialNavigation || !state.locationReliable -> "定位弱，车机惯性导航中"
-            lastBaiduBitmapAt == 0L -> "百度导航画面同步中"
-            else -> "百度导航画面恢复中"
+        val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
         }
-        canvas.drawText(status, w / 2f, h * 0.47f, textPaint)
-        canvas.drawText(state.instruction.ifBlank { "继续行驶" }, w / 2f, h * 0.54f, smallPaint)
+        val arrowStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(30, 90, 200)
+            style = Paint.Style.STROKE
+            strokeWidth = 4f
+        }
+        canvas.drawPath(arrow, arrowPaint)
+        canvas.drawPath(arrow, arrowStroke)
+
+        // 定位不可靠时只在底部给一句小提示，不占画面中央。
+        if (!state.locationReliable || state.inertialNavigation) {
+            val hint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.rgb(200, 214, 224)
+                textSize = 21f
+                textAlign = Paint.Align.CENTER
+            }
+            canvas.drawText("定位信号弱，位置可能不准", w / 2f, h - 128f, hint)
+        }
+        return true
     }
 
-    private fun centerCrop(srcW: Int, srcH: Int, dstW: Int, dstH: Int): Rect {
-        val srcRatio = srcW.toDouble() / srcH
-        val dstRatio = dstW.toDouble() / dstH
-        return if (srcRatio > dstRatio) {
-            val width = (srcH * dstRatio).toInt().coerceAtLeast(1)
-            val left = ((srcW - width) / 2).coerceAtLeast(0)
-            Rect(left, 0, (left + width).coerceAtMost(srcW), srcH)
-        } else {
-            val height = (srcW / dstRatio).toInt().coerceAtLeast(1)
-            val top = ((srcH - height) / 2).coerceAtLeast(0)
-            Rect(0, top, srcW, (top + height).coerceAtMost(srcH))
+    private fun drawSyncHint(canvas: Canvas) {
+        val hint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(170, 190, 204)
+            textSize = 22f
+            textAlign = Paint.Align.CENTER
         }
+        canvas.drawText("路线同步中…", surfaceWidth / 2f, surfaceHeight - 128f, hint)
     }
 
     private fun publishTrip() {
