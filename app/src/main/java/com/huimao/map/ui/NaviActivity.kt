@@ -910,7 +910,8 @@ class NaviActivity : Activity() {
             }
             map.setMyLocationConfiguration(
                 MyLocationConfiguration(
-                    MyLocationConfiguration.LocationMode.FOLLOWING,
+                    // 罗盘模式：地图随定位方向旋转（车头向上）；FOLLOWING 只跟随不旋转。
+                    MyLocationConfiguration.LocationMode.COMPASS,
                     true,
                     null
                 )
@@ -944,7 +945,7 @@ class NaviActivity : Activity() {
                     }
                 }.onFailure { CarNavigationBridge.carMapDiagSnapshotNulls++ }
             }
-            carMapSnapshotHandler.postDelayed(this, 600L)
+            carMapSnapshotHandler.postDelayed(this, 300L)
         }
     }
 
