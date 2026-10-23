@@ -896,7 +896,7 @@ class NaviActivity : Activity() {
             )
             map.animateMapStatus(
                 MapStatusUpdateFactory.newMapStatus(
-                    MapStatus.Builder().zoom(17.5f).overlook(-30).build()
+                    MapStatus.Builder().zoom(17.5f).overlook(-30f).build()
                 )
             )
         }.onFailure { Log.w(TAG, "Car MapView configure failed", it) }
