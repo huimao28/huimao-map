@@ -893,23 +893,6 @@ class NaviActivity : Activity() {
                 val pair = end.latitude to end.longitude
                 if (sampled.lastOrNull() != pair) sampled.add(pair)
             }
-            // 车机自绘地图需要更密的几何：另存一份高上限的完整路线（不进 State/Wear 同步）。
-            val fullStride = (total / 20000).coerceAtLeast(1)
-            val full = ArrayList<Pair<Double, Double>>(minOf(total, 20001))
-            var fullIndex = 0
-            segments.forEach { segment ->
-                segment.forEach { point ->
-                    if (fullIndex % fullStride == 0 && full.size < 20000) {
-                        full.add(point.latitude to point.longitude)
-                    }
-                    fullIndex++
-                }
-            }
-            segments.lastOrNull()?.lastOrNull()?.let { end ->
-                val pair = end.latitude to end.longitude
-                if (full.lastOrNull() != pair) full.add(pair)
-            }
-            CarNavigationBridge.setFullRoutePoints(full)
             CarNavigationBridge.update { it.copy(routePoints = sampled) }
             Log.i(TAG, "Synced ${sampled.size}/$total sampled route points to Android Auto")
         } catch (e: Throwable) {

@@ -110,20 +110,10 @@ object CarNavigationBridge {
         clearPhoneFrame()
         clearJunctionFrame()
         updateLaneIcons(emptyList())
-        fullRoutePoints = emptyList()
         CarNavigationState()
     }
 
     fun setRoutePoints(points: List<Pair<Double, Double>>) = update { it.copy(routePoints = points) }
-
-    /**
-     * 未抽稀的完整路线几何（车机自绘地图专用，上限约 2 万点）。
-     * 不进 State：避免每次状态拷贝与 Wear 同步都背着整条路线。
-     */
-    @Volatile private var fullRoutePoints: List<Pair<Double, Double>> = emptyList()
-
-    fun setFullRoutePoints(points: List<Pair<Double, Double>>) { fullRoutePoints = points }
-    fun fullRoutePointsSnapshot(): List<Pair<Double, Double>> = fullRoutePoints
 
     // ===== 车道图标 / 路口放大图 / 转向图标（位图不进 State，单独保存，与 phoneFrame 同模式） =====
     @Volatile private var laneIcons: List<Bitmap> = emptyList()
