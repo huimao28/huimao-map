@@ -97,6 +97,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     private var miniMapCreated = false
     private var miniMapView: View? = null
     private var lastBaiduBitmapAt = 0L
+    private var fallbackSinceMs = 0L
     private var tickerScheduled = false
     private var pendingInvalidate = false
     private var lastInvalidateAt = 0L
@@ -189,6 +190,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     init {
         appManager.setSurfaceCallback(surfaceCallback)
         CarNavigationBridge.addListener(bridgeListener)
+        CarNavigationBridge.setCarConnected(true)
         navigationManager.setNavigationManagerCallback(carContext.mainExecutor,
             object : NavigationManagerCallback {
                 override fun onStopNavigation() { CarNavigationBridge.stop() }
@@ -212,6 +214,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
                 }
                 miniMapView = null
                 miniMapCreated = false
+                CarNavigationBridge.setCarConnected(false)
                 CarNavigationBridge.removeListener(bridgeListener)
                 navigationManager.clearNavigationManagerCallback()
             }
@@ -336,12 +339,16 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
                 true
             } else false
 
+            if (drewCarMap || drewBaiduMap) fallbackSinceMs = 0L
             if (!drewCarMap && !drewBaiduMap) {
                 val phoneFrameFresh = System.currentTimeMillis() - CarNavigationBridge.phoneFrameTimeMs <= 2_000L
                 val drewPhoneFrame = if (phoneFrameFresh) {
                     CarNavigationBridge.drawPhoneFrame(canvas, Rect(0, 0, surfaceWidth, surfaceHeight), mapPaint)
                 } else false
-                if (!drewPhoneFrame) {
+                if (drewPhoneFrame) {
+                    fallbackSinceMs = 0L
+                } else {
+                    if (fallbackSinceMs == 0L) fallbackSinceMs = System.currentTimeMillis()
                     miniMapView?.let { layoutMiniMapView(it) }
                     drawFallbackNavigation(canvas)
                 }
@@ -518,57 +525,37 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         String.format(Locale.US, "%.1f 公里", meters / 1000.0)
     } else "${meters.coerceAtLeast(0)} 米"
 
+    /**
+     * 兜底页：没有任何新鲜地图帧时显示。刚进入导航的短暂加载期显示「地图加载中」；
+     * 持续无帧（手机端被切到后台或息屏、地图停更）则提示保持手机端前台运行。
+     * 指引卡与行程信息仍由模板层正常更新，不受此页影响。
+     */
     private fun drawFallbackNavigation(canvas: Canvas) {
         val state = CarNavigationBridge.state
         val w = surfaceWidth.toFloat()
         val h = surfaceHeight.toFloat()
-        val routePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(46, 135, 255)
-            strokeWidth = 18f
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-        }
-        val shadowPaint = Paint(routePaint).apply {
-            color = Color.argb(130, 0, 0, 0)
-            strokeWidth = 28f
-        }
-        val carPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val stalled = System.currentTimeMillis() - fallbackSinceMs > 4_000L
+        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = 28f
+            textSize = 38f
+            textAlign = Paint.Align.CENTER
+            isFakeBoldText = true
+        }
+        val subPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(190, 205, 215)
+            textSize = 23f
             textAlign = Paint.Align.CENTER
         }
-        val smallPaint = Paint(textPaint).apply { textSize = 22f; color = Color.rgb(190, 205, 215) }
-
-        val path = android.graphics.Path().apply {
-            moveTo(w * 0.50f, h * 0.78f)
-            cubicTo(w * 0.50f, h * 0.62f, w * 0.56f, h * 0.54f, w * 0.60f, h * 0.42f)
-            cubicTo(w * 0.66f, h * 0.27f, w * 0.56f, h * 0.17f, w * 0.50f, h * 0.10f)
+        if (stalled) {
+            canvas.drawText("请保持手机端导航前台运行", w / 2f, h * 0.44f, titlePaint)
+            canvas.drawText("手机切到后台或息屏后，车机地图将暂停刷新", w / 2f, h * 0.44f + 46f, subPaint)
+        } else {
+            canvas.drawText("地图加载中…", w / 2f, h * 0.44f, titlePaint)
         }
-        canvas.drawPath(path, shadowPaint)
-        canvas.drawPath(path, routePaint)
-
-        canvas.save()
-        canvas.translate(w * 0.50f, h * 0.78f)
-        canvas.rotate(state.bearing.takeIf { it.isFinite() } ?: 0f)
-        val car = android.graphics.Path().apply {
-            moveTo(0f, -32f)
-            lineTo(20f, 26f)
-            lineTo(0f, 14f)
-            lineTo(-20f, 26f)
-            close()
+        val hint = state.instruction.ifBlank { state.roadName }
+        if (hint.isNotBlank()) {
+            canvas.drawText(hint.take(24), w / 2f, h * 0.44f + 96f, subPaint)
         }
-        canvas.drawPath(car, carPaint)
-        canvas.restore()
-
-        val status = when {
-            state.inertialNavigation || !state.locationReliable -> "定位弱，车机惯性导航中"
-            lastBaiduBitmapAt == 0L -> "百度导航画面同步中"
-            else -> "百度导航画面恢复中"
-        }
-        canvas.drawText(status, w / 2f, h * 0.47f, textPaint)
-        canvas.drawText(state.instruction.ifBlank { "继续行驶" }, w / 2f, h * 0.54f, smallPaint)
     }
 
     private fun centerCrop(srcW: Int, srcH: Int, dstW: Int, dstH: Int): Rect {

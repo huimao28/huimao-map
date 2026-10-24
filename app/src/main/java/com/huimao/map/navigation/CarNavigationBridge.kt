@@ -160,6 +160,17 @@ object CarNavigationBridge {
         carMapDiagLocFeeds = 0
     }
 
+    // 车机连接状态（NavCarService 的车机界面创建/销毁时维护），
+    // 手机端据此在导航时显示「正在驾车」提示页（上架合规）。
+    @Volatile var carConnected: Boolean = false
+        private set
+
+    fun setCarConnected(connected: Boolean) {
+        if (carConnected == connected) return
+        carConnected = connected
+        listeners.forEach { runCatching { it() } }
+    }
+
     // ===== 车道图标 / 路口放大图 / 转向图标（位图不进 State，单独保存，与 phoneFrame 同模式） =====
     @Volatile private var laneIcons: List<Bitmap> = emptyList()
 
