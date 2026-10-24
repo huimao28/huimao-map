@@ -1051,6 +1051,7 @@ fun SettingsScreen(onBack: () -> Unit, onAboutClick: () -> Unit) {
     val baiduTtsApiKey by settingsVm.baiduTtsApiKey.collectAsState()
     val baiduTtsSecretKey by settingsVm.baiduTtsSecretKey.collectAsState()
     val traffic by settingsVm.trafficEnabled.collectAsState()
+    val carDiag by settingsVm.carDiagEnabled.collectAsState()
     val routeType by settingsVm.routeType.collectAsState()
 
     var showApiKeyDialog by remember { mutableStateOf(false) }
@@ -1293,6 +1294,8 @@ fun SettingsScreen(onBack: () -> Unit, onAboutClick: () -> Unit) {
                             },
                             modifier = Modifier.clickable { showApiKeyDialog = true }
                         )
+                        HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                        ListItem(headlineContent = { Text("车机诊断信息") }, supportingContent = { Text("在车机导航画面顶部显示截帧状态（调试用）") }, leadingContent = { Icon(Icons.Default.BugReport, null) }, trailingContent = { Switch(carDiag, { settingsVm.setCarDiagEnabled(it) }) })
                     }
                 }
             }

@@ -18,6 +18,7 @@ object AppSettingsKeys {
     val BAIDU_TTS_API_KEY = stringPreferencesKey("baidu_tts_api_key")
     val BAIDU_TTS_SECRET_KEY = stringPreferencesKey("baidu_tts_secret_key")
     val TRAFFIC_ENABLED = booleanPreferencesKey("traffic_enabled")
+    val CAR_DIAG_ENABLED = booleanPreferencesKey("car_diag_enabled")
     val ROUTE_TYPE = intPreferencesKey("route_type")
     val DARK_MAP = booleanPreferencesKey("dark_map")
 }

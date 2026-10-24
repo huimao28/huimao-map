@@ -44,6 +44,10 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         .map { it[AppSettingsKeys.TRAFFIC_ENABLED] ?: true }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val carDiagEnabled = ds.data
+        .map { it[AppSettingsKeys.CAR_DIAG_ENABLED] ?: true }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     val routeType = ds.data
         .map { it[AppSettingsKeys.ROUTE_TYPE] ?: 0 }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
@@ -77,6 +81,10 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setTrafficEnabled(enabled: Boolean) {
         viewModelScope.launch { ds.edit { it[AppSettingsKeys.TRAFFIC_ENABLED] = enabled } }
+    }
+
+    fun setCarDiagEnabled(enabled: Boolean) {
+        viewModelScope.launch { ds.edit { it[AppSettingsKeys.CAR_DIAG_ENABLED] = enabled } }
     }
     fun saveTrafficEnabled(enabled: Boolean) = setTrafficEnabled(enabled)
 

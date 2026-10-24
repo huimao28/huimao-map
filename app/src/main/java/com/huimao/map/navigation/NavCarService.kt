@@ -38,7 +38,13 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.baidu.navisdk.adapter.BaiduNaviManagerFactory
 import com.baidu.navisdk.adapter.IBNMiniMapViewManager
+import com.huimao.map.data.AppSettingsKeys
+import com.huimao.map.data.dataStore
 import com.huimao.map.ui.LocationRedirectActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.TimeZone
 
@@ -98,6 +104,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
     private var miniMapView: View? = null
     private var lastBaiduBitmapAt = 0L
     private var fallbackSinceMs = 0L
+    private val settingsScope = CoroutineScope(Dispatchers.Main)
     private var tickerScheduled = false
     private var pendingInvalidate = false
     private var lastInvalidateAt = 0L
@@ -191,6 +198,15 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         appManager.setSurfaceCallback(surfaceCallback)
         CarNavigationBridge.addListener(bridgeListener)
         CarNavigationBridge.setCarConnected(true)
+        // 订阅设置中的「车机诊断信息」开关，切换后车机画面实时生效。
+        settingsScope.launch {
+            runCatching {
+                carContext.dataStore.data.collect { prefs ->
+                    CarNavigationBridge.carDiagEnabled =
+                        prefs[AppSettingsKeys.CAR_DIAG_ENABLED] ?: true
+                }
+            }
+        }
         navigationManager.setNavigationManagerCallback(carContext.mainExecutor,
             object : NavigationManagerCallback {
                 override fun onStopNavigation() { CarNavigationBridge.stop() }
@@ -214,6 +230,7 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
                 }
                 miniMapView = null
                 miniMapCreated = false
+                settingsScope.cancel()
                 CarNavigationBridge.setCarConnected(false)
                 CarNavigationBridge.removeListener(bridgeListener)
                 navigationManager.clearNavigationManagerCallback()
@@ -502,9 +519,10 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         }
     }
 
-    /** 小样诊断行：左下角回报手机端 MapView 各环节状态，定位截帧断点用（验证后移除）。 */
+    /** 诊断行：画面顶部居中（带半透明底衬）回报手机端 MapView 各环节状态，受设置开关控制。 */
     private fun drawCarMapDiag(canvas: Canvas) {
         if (!CarNavigationBridge.state.navigating) return
+        if (!CarNavigationBridge.carDiagEnabled) return
         val age = if (CarNavigationBridge.carMapFrameTimeMs > 0L) {
             "${(System.currentTimeMillis() - CarNavigationBridge.carMapFrameTimeMs) / 1000}秒前"
         } else "无"
@@ -516,9 +534,20 @@ class CarMainScreen(carContext: CarContext) : Screen(carContext) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.YELLOW
             textSize = 19f
-            setShadowLayer(3f, 0f, 0f, Color.BLACK)
+            textAlign = Paint.Align.CENTER
+            isFakeBoldText = true
         }
-        canvas.drawText(text, 16f, surfaceHeight - 14f, paint)
+        val textWidth = paint.measureText(text)
+        val padX = 20f
+        val top = 12f
+        val pillHeight = 36f
+        val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(175, 0, 0, 0) }
+        val rect = RectF(
+            surfaceWidth / 2f - textWidth / 2f - padX, top,
+            surfaceWidth / 2f + textWidth / 2f + padX, top + pillHeight
+        )
+        canvas.drawRoundRect(rect, 18f, 18f, bg)
+        canvas.drawText(text, surfaceWidth / 2f, top + 25f, paint)
     }
 
     private fun formatMeters(meters: Int): String = if (meters >= 1000) {

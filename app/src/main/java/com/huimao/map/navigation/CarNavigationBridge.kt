@@ -171,6 +171,9 @@ object CarNavigationBridge {
         listeners.forEach { runCatching { it() } }
     }
 
+    // 车机诊断行开关（由设置页 DataStore 同步，NavCarService 订阅维护）。
+    @Volatile var carDiagEnabled: Boolean = true
+
     // ===== 车道图标 / 路口放大图 / 转向图标（位图不进 State，单独保存，与 phoneFrame 同模式） =====
     @Volatile private var laneIcons: List<Bitmap> = emptyList()
 
