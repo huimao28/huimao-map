@@ -862,35 +862,32 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
 }
 
 // ─────────────────────────────────────────────
-// 出行方式选择（Material 3 Expressive ButtonGroup）
+// 出行方式选择（分段按钮；ButtonGroup 在 material3 1.3.2 中不存在，见 CI 全量日志）
 // ─────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RouteModeButtonGroup(selected: RouteMode, onSelect: (RouteMode) -> Unit, modifier: Modifier = Modifier) {
-    ButtonGroup(
-        overflowIndicator = { state ->
-            IconButton(onClick = { state.show() }) {
-                Icon(Icons.Default.MoreVert, contentDescription = "更多出行方式")
-            }
-        },
-        modifier = modifier
-    ) {
-        RouteMode.entries.forEach { mode ->
-            toggleableItem(
-                checked = mode == selected,
-                label = mode.label,
-                onCheckedChange = { if (it) onSelect(mode) },
+    val modes = RouteMode.entries
+    SingleChoiceSegmentedButtonRow(modifier = modifier) {
+        modes.forEachIndexed { index, mode ->
+            SegmentedButton(
+                selected = mode == selected,
+                onClick = { onSelect(mode) },
+                shape = SegmentedButtonDefaults.itemShape(index, modes.size),
                 icon = {
-                    Icon(
-                        when (mode) {
-                            RouteMode.DRIVING -> Icons.Default.DirectionsCar
-                            RouteMode.WALKING -> Icons.Default.DirectionsWalk
-                            RouteMode.BIKING -> Icons.Default.DirectionsBike
-                            RouteMode.TRANSIT -> Icons.Default.DirectionsBus
-                        },
-                        contentDescription = null
-                    )
+                    SegmentedButtonDefaults.Icon(active = mode == selected) {
+                        Icon(
+                            when (mode) {
+                                RouteMode.DRIVING -> Icons.Default.DirectionsCar
+                                RouteMode.WALKING -> Icons.Default.DirectionsWalk
+                                RouteMode.BIKING -> Icons.Default.DirectionsBike
+                                RouteMode.TRANSIT -> Icons.Default.DirectionsBus
+                            },
+                            contentDescription = null
+                        )
+                    }
                 },
-                weight = 1f
+                label = { Text(mode.label) }
             )
         }
     }
@@ -1002,7 +999,7 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
                                 }
                             }
                             Spacer(Modifier.height(12.dp))
-                            // 出行方式（Expressive ButtonGroup）
+                            // 出行方式（分段按钮）
                             RouteModeButtonGroup(
                                 selected = routeMode,
                                 onSelect = { vm.setRouteMode(it) },
