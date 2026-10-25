@@ -11,9 +11,12 @@ import com.baidu.mapapi.SDKInitializer
 import com.baidu.mapapi.search.core.SearchResult
 import com.baidu.mapapi.search.poi.OnGetPoiSearchResultListener
 import com.baidu.mapapi.search.poi.PoiCitySearchOption
+import com.baidu.mapapi.search.poi.PoiDetailResult
+import com.baidu.mapapi.search.poi.PoiDetailSearchOption
 import com.baidu.mapapi.search.poi.PoiNearbySearchOption
 import com.baidu.mapapi.search.poi.PoiResult
 import com.baidu.mapapi.search.poi.PoiSearch
+import com.baidu.mapapi.search.route.BikingRoutePlanOption
 import com.baidu.mapapi.search.route.BikingRouteResult
 import com.baidu.mapapi.search.route.DrivingRoutePlanOption
 import com.baidu.mapapi.search.route.DrivingRouteResult
@@ -23,7 +26,9 @@ import com.baidu.mapapi.search.route.MassTransitRouteResult
 import com.baidu.mapapi.search.route.OnGetRoutePlanResultListener
 import com.baidu.mapapi.search.route.PlanNode
 import com.baidu.mapapi.search.route.RoutePlanSearch
+import com.baidu.mapapi.search.route.TransitRoutePlanOption
 import com.baidu.mapapi.search.route.TransitRouteResult
+import com.baidu.mapapi.search.route.WalkingRoutePlanOption
 import com.baidu.mapapi.search.route.WalkingRouteResult
 import com.huimao.map.model.LatLng
 import com.huimao.map.model.ManeuverType
@@ -36,6 +41,22 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
 private const val TAG = "BaiduMapManager"
+
+/** 路线规划出行方式（与白马地图的步行/骑行/驾车/公交四档对齐，百度单引擎实现）。 */
+enum class RouteMode(val label: String) {
+    DRIVING("驾车"),
+    WALKING("步行"),
+    BIKING("骑行"),
+    TRANSIT("公交"),
+}
+
+/** 驾车路线策略（映射百度 DrivingPolicy，与白马地图的策略档位一致）。 */
+enum class DrivingPolicyOption(val label: String) {
+    TIME_FIRST("时间优先"),
+    AVOID_JAM("避堵"),
+    DIS_FIRST("距离优先"),
+    FEE_FIRST("少收费"),
+}
 
 object BaiduMapManager {
 
@@ -159,81 +180,200 @@ object BaiduMapManager {
         }
     }
 
-    /** 使用百度地图 SDK 规划真实驾车路线，返回道路几何、距离、时间和步骤。 */
-    suspend fun planDrivingRoutes(origin: LatLng, destination: Place): List<RouteResult> =
-        suspendCancellableCoroutine { cont ->
-            val search = RoutePlanSearch.newInstance()
-            var completed = false
-            fun finish(value: List<RouteResult>) {
-                if (completed) return
-                completed = true
-                try { search.destroy() } catch (_: Throwable) {}
-                if (cont.isActive) cont.resume(value)
-            }
-            search.setOnGetRoutePlanResultListener(object : OnGetRoutePlanResultListener {
-                override fun onGetDrivingRouteResult(result: DrivingRouteResult?) {
-                    if (result == null || result.error != SearchResult.ERRORNO.NO_ERROR) {
-                        Log.w(TAG, "Driving route failed: ${result?.error}")
-                        finish(emptyList()); return
-                    }
-                    val originPlace = Place(name = "当前位置", latLng = origin)
-                    val routes = result.routeLines.orEmpty().mapIndexed { index, line ->
-                        val points = line.allStep.orEmpty().flatMap { step ->
-                            step.wayPoints.orEmpty().map { LatLng(it.latitude, it.longitude) }
-                        }.distinct()
-                        val steps = line.allStep.orEmpty().map { step ->
-                            RouteStep(
-                                instruction = step.instructions ?: "继续行驶",
-                                distance = step.distance.toDouble(),
-                                duration = step.duration.toLong(),
-                                maneuver = ManeuverType.STRAIGHT,
-                                roadName = step.roadName ?: ""
-                            )
-                        }
-                        RouteResult(
-                            routeId = "baidu-$index",
-                            origin = originPlace,
-                            destination = destination,
-                            steps = steps,
-                            pathPoints = points,
-                            totalDistance = line.distance.toDouble(),
-                            totalDuration = line.duration.toLong(),
-                            trafficCondition = if (line.congestionDistance > 0) TrafficCondition.SLOW else TrafficCondition.SMOOTH,
-                            routeType = if (index == 0) RouteType.RECOMMENDED else RouteType.FASTEST
-                        )
-                    }
-                    finish(routes)
+    /**
+     * 多方式路线规划（驾车/步行/骑行/公交）。
+     * 驾车默认带路况策略（ROUTE_PATH_AND_TRAFFIC）并按所选策略算路；
+     * 公交需传入城市名（无城市名时仍尝试算路，SDK 可能返回空）。
+     */
+    suspend fun planRoutes(
+        origin: LatLng,
+        destination: Place,
+        mode: RouteMode,
+        drivingPolicy: DrivingPolicyOption = DrivingPolicyOption.TIME_FIRST,
+        city: String = ""
+    ): List<RouteResult> = suspendCancellableCoroutine { cont ->
+        val search = RoutePlanSearch.newInstance()
+        var completed = false
+        fun finish(value: List<RouteResult>) {
+            if (completed) return
+            completed = true
+            try { search.destroy() } catch (_: Throwable) {}
+            if (cont.isActive) cont.resume(value)
+        }
+        fun <T : com.baidu.mapapi.search.core.RouteStep> mapLines(
+            lines: List<Triple<List<T>, Int, Int>>,
+            prefix: String,
+            instructionOf: (T) -> String?
+        ): List<RouteResult> {
+            val originPlace = Place(name = "当前位置", latLng = origin)
+            return lines.mapIndexed { index, (steps, distance, duration) ->
+                val points = steps.flatMap { step ->
+                    step.wayPoints.orEmpty().map { LatLng(it.latitude, it.longitude) }
+                }.distinct()
+                val mappedSteps = steps.map { step ->
+                    RouteStep(
+                        instruction = instructionOf(step) ?: "继续行驶",
+                        distance = step.distance.toDouble(),
+                        duration = step.duration.toLong(),
+                        maneuver = ManeuverType.STRAIGHT,
+                        roadName = ""
+                    )
                 }
-                override fun onGetWalkingRouteResult(r: WalkingRouteResult?) = Unit
-                override fun onGetTransitRouteResult(r: TransitRouteResult?) = Unit
-                override fun onGetMassTransitRouteResult(r: MassTransitRouteResult?) = Unit
-                override fun onGetIndoorRouteResult(r: IndoorRouteResult?) = Unit
-                override fun onGetBikingRouteResult(r: BikingRouteResult?) = Unit
-                override fun onGetIntegralRouteResult(r: IntegralRouteResult?) = Unit
-            })
-            cont.invokeOnCancellation { try { search.destroy() } catch (_: Throwable) {} }
-            try {
-                val ok = search.drivingSearch(
-                    DrivingRoutePlanOption()
-                        .from(PlanNode.withLocation(com.baidu.mapapi.model.LatLng(origin.latitude, origin.longitude)))
-                        .to(PlanNode.withLocation(com.baidu.mapapi.model.LatLng(
-                            destination.latLng.latitude, destination.latLng.longitude)))
-                        .policy(DrivingRoutePlanOption.DrivingPolicy.ECAR_TIME_FIRST)
+                RouteResult(
+                    routeId = "$prefix-$index",
+                    origin = originPlace,
+                    destination = destination,
+                    steps = mappedSteps,
+                    pathPoints = points,
+                    totalDistance = distance.toDouble(),
+                    totalDuration = duration.toLong(),
+                    trafficCondition = TrafficCondition.UNKNOWN,
+                    routeType = if (index == 0) RouteType.RECOMMENDED else RouteType.FASTEST
                 )
-                if (!ok) finish(emptyList())
-            } catch (e: Throwable) {
-                Log.e(TAG, "Driving route exception", e)
-                finish(emptyList())
             }
         }
+        search.setOnGetRoutePlanResultListener(object : OnGetRoutePlanResultListener {
+            override fun onGetDrivingRouteResult(result: DrivingRouteResult?) {
+                if (result == null || result.error != SearchResult.ERRORNO.NO_ERROR) {
+                    Log.w(TAG, "Driving route failed: ${result?.error}")
+                    finish(emptyList()); return
+                }
+                val rawLines = result.routeLines.orEmpty()
+                val lines = rawLines.map { line ->
+                    Triple(line.allStep.orEmpty(), line.distance, line.duration)
+                }
+                val mapped = mapLines(lines, "baidu-drive") { it.instructions }
+                finish(mapped.mapIndexed { i, r ->
+                    val cong = rawLines.getOrNull(i)?.congestionDistance ?: 0
+                    r.copy(trafficCondition = if (cong > 0) TrafficCondition.SLOW else TrafficCondition.SMOOTH)
+                })
+            }
+            override fun onGetWalkingRouteResult(result: WalkingRouteResult?) {
+                if (result == null || result.error != SearchResult.ERRORNO.NO_ERROR) {
+                    Log.w(TAG, "Walking route failed: ${result?.error}")
+                    finish(emptyList()); return
+                }
+                val lines = result.routeLines.orEmpty().map { line ->
+                    Triple(line.allStep.orEmpty(), line.distance, line.duration)
+                }
+                finish(mapLines(lines, "baidu-walk") { it.instructions })
+            }
+            override fun onGetBikingRouteResult(result: BikingRouteResult?) {
+                if (result == null || result.error != SearchResult.ERRORNO.NO_ERROR) {
+                    Log.w(TAG, "Biking route failed: ${result?.error}")
+                    finish(emptyList()); return
+                }
+                val lines = result.routeLines.orEmpty().map { line ->
+                    Triple(line.allStep.orEmpty(), line.distance, line.duration)
+                }
+                finish(mapLines(lines, "baidu-bike") { it.instructions })
+            }
+            override fun onGetTransitRouteResult(result: TransitRouteResult?) {
+                if (result == null || result.error != SearchResult.ERRORNO.NO_ERROR) {
+                    Log.w(TAG, "Transit route failed: ${result?.error}")
+                    finish(emptyList()); return
+                }
+                val lines = result.routeLines.orEmpty().map { line ->
+                    Triple(line.allStep.orEmpty(), line.distance, line.duration)
+                }
+                finish(mapLines(lines, "baidu-transit") { it.instructions })
+            }
+            override fun onGetMassTransitRouteResult(r: MassTransitRouteResult?) = Unit
+            override fun onGetIndoorRouteResult(r: IndoorRouteResult?) = Unit
+            override fun onGetIntegralRouteResult(r: IntegralRouteResult?) = Unit
+        })
+        cont.invokeOnCancellation { try { search.destroy() } catch (_: Throwable) {} }
+        try {
+            val from = PlanNode.withLocation(
+                com.baidu.mapapi.model.LatLng(origin.latitude, origin.longitude)
+            )
+            val to = PlanNode.withLocation(
+                com.baidu.mapapi.model.LatLng(
+                    destination.latLng.latitude, destination.latLng.longitude
+                )
+            )
+            val ok = when (mode) {
+                RouteMode.DRIVING -> {
+                    val policy = when (drivingPolicy) {
+                        DrivingPolicyOption.TIME_FIRST -> DrivingRoutePlanOption.DrivingPolicy.ECAR_TIME_FIRST
+                        DrivingPolicyOption.AVOID_JAM -> DrivingRoutePlanOption.DrivingPolicy.ECAR_AVOID_JAM
+                        DrivingPolicyOption.DIS_FIRST -> DrivingRoutePlanOption.DrivingPolicy.ECAR_DIS_FIRST
+                        DrivingPolicyOption.FEE_FIRST -> DrivingRoutePlanOption.DrivingPolicy.ECAR_FEE_FIRST
+                    }
+                    search.drivingSearch(
+                        DrivingRoutePlanOption().from(from).to(to)
+                            .trafficPolicy(DrivingRoutePlanOption.DrivingTrafficPolicy.ROUTE_PATH_AND_TRAFFIC)
+                            .policy(policy)
+                    )
+                }
+                RouteMode.WALKING -> search.walkingSearch(
+                    WalkingRoutePlanOption().from(from).to(to)
+                )
+                RouteMode.BIKING -> search.bikingSearch(
+                    BikingRoutePlanOption().from(from).to(to)
+                )
+                RouteMode.TRANSIT -> search.transitSearch(
+                    TransitRoutePlanOption().from(from).to(to)
+                        .city(city)
+                        .policy(TransitRoutePlanOption.TransitPolicy.EBUS_TIME_FIRST)
+                )
+            }
+            if (!ok) finish(emptyList())
+        } catch (e: Throwable) {
+            Log.e(TAG, "Route plan exception", e)
+            finish(emptyList())
+        }
+    }
 
     /**
-     * POI 搜索（周边或城市内）
+     * POI 详情（按 UID）：补全名称、地址与坐标。
+     */
+    suspend fun getPoiDetail(uid: String): Place? = suspendCancellableCoroutine { cont ->
+        try {
+            val search = PoiSearch.newInstance()
+            val listener = object : OnGetPoiSearchResultListener {
+                override fun onGetPoiResult(result: PoiResult?) {}
+                override fun onGetPoiDetailResult(result: PoiDetailResult?) {
+                    try { search.destroy() } catch (_: Throwable) {}
+                    if (result == null || result.error != SearchResult.ERRORNO.NO_ERROR) {
+                        Log.w(TAG, "POI detail failed: ${result?.error}")
+                        if (cont.isActive) cont.resume(null)
+                        return
+                    }
+                    val place = Place(
+                        uid = result.uid ?: uid,
+                        name = result.name ?: "",
+                        address = result.address ?: "",
+                        latLng = LatLng(
+                            result.location?.latitude ?: 0.0,
+                            result.location?.longitude ?: 0.0
+                        )
+                    )
+                    if (cont.isActive) cont.resume(place)
+                }
+                override fun onGetPoiDetailResult(result: com.baidu.mapapi.search.poi.PoiDetailSearchResult?) {
+                    try { search.destroy() } catch (_: Throwable) {}
+                    if (cont.isActive) cont.resume(null)
+                }
+                override fun onGetPoiIndoorResult(result: com.baidu.mapapi.search.poi.PoiIndoorResult?) {}
+            }
+            search.setOnGetPoiSearchResultListener(listener)
+            search.searchPoiDetail(PoiDetailSearchOption().poiUid(uid))
+        } catch (e: Exception) {
+            Log.e(TAG, "POI detail exception: ${e.message}", e)
+            if (cont.isActive) cont.resume(null)
+        }
+    }
+
+    /**
+     * POI 搜索（周边或城市内），支持分页。
      */
     suspend fun searchPoi(
         keyword: String,
         city: String = "北京",
-        location: LatLng? = null
+        location: LatLng? = null,
+        pageNum: Int = 0,
+        pageCapacity: Int = 10
     ): List<Place> = suspendCancellableCoroutine { cont ->
         try {
             val search = PoiSearch.newInstance()
@@ -275,14 +415,16 @@ object BaiduMapManager {
                         .keyword(keyword)
                         .location(bdLoc)
                         .radius(5000)
-                        .pageNum(0)
+                        .pageNum(pageNum)
+                        .pageCapacity(pageCapacity)
                 )
             } else {
                 search.searchInCity(
                     PoiCitySearchOption()
                         .city(city)
                         .keyword(keyword)
-                        .pageNum(0)
+                        .pageNum(pageNum)
+                        .pageCapacity(pageCapacity)
                 )
             }
         } catch (e: Exception) {

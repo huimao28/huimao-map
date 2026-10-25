@@ -41,6 +41,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.ui.platform.LocalConfiguration
 import com.huimao.map.map.BaiduMapManager
+import com.huimao.map.map.DrivingPolicyOption
+import com.huimao.map.map.RouteMode
 import com.huimao.map.map.BaiduMapView
 import com.huimao.map.map.MapLayerType
 import com.huimao.map.model.*
@@ -193,6 +195,50 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
     // 搜索任务：用于取消上一次搜索，防止并发崩溃
     private var searchJob: kotlinx.coroutines.Job? = null
 
+    // 路线规划状态：出行方式 / 驾车策略 / 是否正在规划
+    private val _routeMode = MutableStateFlow(RouteMode.DRIVING)
+    val routeMode: StateFlow<RouteMode> = _routeMode.asStateFlow()
+    private val _drivingPolicy = MutableStateFlow(DrivingPolicyOption.TIME_FIRST)
+    val drivingPolicy: StateFlow<DrivingPolicyOption> = _drivingPolicy.asStateFlow()
+    private val _isPlanning = MutableStateFlow(false)
+    val isPlanning: StateFlow<Boolean> = _isPlanning.asStateFlow()
+
+    // 搜索分页状态
+    private val _hasMoreSearch = MutableStateFlow(false)
+    val hasMoreSearch: StateFlow<Boolean> = _hasMoreSearch.asStateFlow()
+    private var searchKeyword = ""
+    private var searchCityHint = ""
+    private var searchCityUsed = ""
+    private var searchPage = 0
+    private val searchPageSize = 10
+
+    private val knownCities = listOf("北京", "上海", "天津", "重庆", "广州", "深圳", "长沙", "常德",
+        "武汉", "成都", "杭州", "南京", "西安", "郑州", "济南", "青岛", "厦门", "福州",
+        "昆明", "贵阳", "南宁", "海口", "三亚", "拉萨", "乌鲁木齐", "哈尔滨", "长春", "沈阳")
+
+    /** 执行一次搜索（第 pageNum 页），返回结果与识别到的城市。 */
+    private suspend fun runSearch(keyword: String, cityHint: String, pageNum: Int): Pair<List<Place>, String> {
+        val loc = _currentLocation.value
+        val text = keyword.trim()
+        // 识别“北京故宫、常德市火车站”等跨城市查询。
+        val detectedCity = cityHint.ifBlank { knownCities.firstOrNull { text.startsWith(it) } ?: "" }
+        val cleanKeyword = if (detectedCity.isNotBlank()) {
+            text.removePrefix(detectedCity).removePrefix("市").trim().ifBlank { text }
+        } else text
+        val results = if (detectedCity.isNotBlank()) {
+            BaiduMapManager.searchPoi(cleanKeyword, city = detectedCity, pageNum = pageNum, pageCapacity = searchPageSize)
+        } else if (loc != null) {
+            val nearby = BaiduMapManager.searchPoi(cleanKeyword, location = loc, pageNum = pageNum, pageCapacity = searchPageSize)
+            if (pageNum > 0 || nearby.size >= 5) nearby else {
+                (nearby + BaiduMapManager.searchPoi(cleanKeyword, city = "全国", pageNum = 0, pageCapacity = searchPageSize))
+                    .distinctBy { it.uid.ifBlank { "${it.name}-${it.latLng}" } }
+            }
+        } else {
+            BaiduMapManager.searchPoi(cleanKeyword, city = "全国", pageNum = pageNum, pageCapacity = searchPageSize)
+        }
+        return results to detectedCity
+    }
+
     /**
      * 调用百度地图 SDK 进行真实 POI 搜索
      * 每次调用前取消上一次搜索 Job，防止并发崩溃
@@ -200,6 +246,7 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
     fun searchPlaces(keyword: String, city: String = "") {
         if (keyword.length < 2) {
             _searchResults.value = emptyList()
+            _hasMoreSearch.value = false
             return
         }
         // 刷新 SDK 状态
@@ -208,6 +255,7 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
         if (!_sdkReady.value) {
             _searchResults.value = emptyList()
             _isSearching.value = false
+            _hasMoreSearch.value = false
             return
         }
         // 取消上一次搜索
@@ -215,31 +263,40 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
         searchJob = viewModelScope.launch {
             _isSearching.value = true
             try {
-                val loc = _currentLocation.value
-                val text = keyword.trim()
-                // 识别“北京故宫、常德市火车站”等跨城市查询。
-                val cities = listOf("北京", "上海", "天津", "重庆", "广州", "深圳", "长沙", "常德",
-                    "武汉", "成都", "杭州", "南京", "西安", "郑州", "济南", "青岛", "厦门", "福州",
-                    "昆明", "贵阳", "南宁", "海口", "三亚", "拉萨", "乌鲁木齐", "哈尔滨", "长春", "沈阳")
-                val detectedCity = city.ifBlank { cities.firstOrNull { text.startsWith(it) } ?: "" }
-                val cleanKeyword = if (detectedCity.isNotBlank()) {
-                    text.removePrefix(detectedCity).removePrefix("市").trim().ifBlank { text }
-                } else text
-                val results = if (detectedCity.isNotBlank()) {
-                    BaiduMapManager.searchPoi(cleanKeyword, city = detectedCity)
-                } else if (loc != null) {
-                    val nearby = BaiduMapManager.searchPoi(cleanKeyword, location = loc)
-                    if (nearby.size >= 5) nearby else {
-                        (nearby + BaiduMapManager.searchPoi(cleanKeyword, city = "全国"))
-                            .distinctBy { it.uid.ifBlank { "${it.name}-${it.latLng}" } }
-                    }
-                } else {
-                    BaiduMapManager.searchPoi(cleanKeyword, city = "全国")
-                }
+                val (results, usedCity) = runSearch(keyword, city, 0)
+                searchKeyword = keyword
+                searchCityHint = city
+                searchCityUsed = usedCity
+                searchPage = 0
                 _searchResults.value = results
+                _hasMoreSearch.value = results.size >= searchPageSize
             } catch (e: Exception) {
                 android.util.Log.w("NavViewModel", "searchPlaces error: ${e.message}")
                 _searchResults.value = emptyList()
+                _hasMoreSearch.value = false
+            } finally {
+                _isSearching.value = false
+            }
+        }
+    }
+
+    /** 加载搜索结果下一页并追加。 */
+    fun loadMoreSearch() {
+        if (!_hasMoreSearch.value || _isSearching.value || searchKeyword.isBlank()) return
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            _isSearching.value = true
+            try {
+                val nextPage = searchPage + 1
+                val (results, _) = runSearch(searchKeyword, searchCityHint, nextPage)
+                if (results.isNotEmpty()) {
+                    searchPage = nextPage
+                    _searchResults.value = (_searchResults.value + results)
+                        .distinctBy { it.uid.ifBlank { "${it.name}-${it.latLng}" } }
+                }
+                _hasMoreSearch.value = results.size >= searchPageSize
+            } catch (e: Exception) {
+                android.util.Log.w("NavViewModel", "loadMoreSearch error: ${e.message}")
             } finally {
                 _isSearching.value = false
             }
@@ -251,21 +308,60 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun selectDestination(place: Place) {
-        _selectedDest.value = place
-        _routes.value = emptyList()
+        // 先按 UID 拉一次详情，补全地址；失败则直接用搜索结果。
+        viewModelScope.launch {
+            val dest = if (place.uid.isNotBlank()) {
+                try { BaiduMapManager.getPoiDetail(place.uid) ?: place } catch (_: Exception) { place }
+            } else place
+            _selectedDest.value = dest
+            _routes.value = emptyList()
+            planForDestination(dest)
+        }
+    }
+
+    /** 公交算路用的城市：优先搜索时识别的城市，其次从目的地地址前缀识别。 */
+    private fun transitCityFor(place: Place): String {
+        if (searchCityUsed.isNotBlank()) return searchCityUsed
+        val addr = place.address.trim()
+        return knownCities.firstOrNull { addr.startsWith(it) } ?: ""
+    }
+
+    /** 按当前出行方式与驾车策略为目的地算路。 */
+    fun planForDestination(place: Place) {
         viewModelScope.launch {
             val origin = _currentLocation.value
             if (origin == null || origin.latitude == 0.0 || origin.longitude == 0.0) {
                 android.util.Log.w("NavViewModel", "Cannot plan route before location is ready")
                 return@launch
             }
+            _isPlanning.value = true
             try {
                 // 使用百度地图 SDK 返回真实道路路线；不再生成直线距离估算路线。
-                _routes.value = BaiduMapManager.planDrivingRoutes(origin, place)
+                _routes.value = BaiduMapManager.planRoutes(
+                    origin, place, _routeMode.value, _drivingPolicy.value, transitCityFor(place)
+                )
             } catch (e: Throwable) {
                 android.util.Log.e("NavViewModel", "Baidu route planning failed", e)
                 _routes.value = emptyList()
+            } finally {
+                _isPlanning.value = false
             }
+        }
+    }
+
+    /** 切换出行方式并重新算路。 */
+    fun setRouteMode(mode: RouteMode) {
+        if (_routeMode.value == mode) return
+        _routeMode.value = mode
+        _selectedDest.value?.let { planForDestination(it) }
+    }
+
+    /** 切换驾车策略并重新算路（仅驾车模式有效）。 */
+    fun setDrivingPolicy(policy: DrivingPolicyOption) {
+        if (_drivingPolicy.value == policy) return
+        _drivingPolicy.value = policy
+        if (_routeMode.value == RouteMode.DRIVING) {
+            _selectedDest.value?.let { planForDestination(it) }
         }
     }
 
@@ -346,6 +442,7 @@ object Routes {
     fun search(query: String) = "search/${android.net.Uri.encode(query)}"
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AppNavGraph(
     navController: NavHostController = rememberNavController(),
@@ -353,6 +450,8 @@ fun AppNavGraph(
         androidx.compose.ui.platform.LocalContext.current.applicationContext as android.app.Application
     ))
 ) {
+    // Material 3 Expressive：搜索与路线页使用 Expressive 动效与组件。
+    MaterialExpressiveTheme {
     NavHost(
         navController = navController,
         startDestination = Routes.HOME,
@@ -424,6 +523,7 @@ fun AppNavGraph(
                 onPlaceSelected = { navController.navigate(Routes.ROUTE_PREVIEW) }
             )
         }
+    }
     }
 }
 
@@ -654,12 +754,13 @@ fun QuickCard(icon: ImageVector, label: String, sub: String, bg: Color, fg: Colo
 // ─────────────────────────────────────────────
 // SearchScreen
 // ─────────────────────────────────────────────
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit, onPlaceSelected: () -> Unit) {
     var query by remember(initialQuery) { mutableStateOf(initialQuery) }
     val searchResults by vm.searchResults.collectAsState()
     val isSearching by vm.isSearching.collectAsState()
+    val hasMoreSearch by vm.hasMoreSearch.collectAsState()
 
     // 输入变化时触发真实搜索（300ms debounce 防止快速输入并发崩溃）
     LaunchedEffect(query) {
@@ -683,10 +784,10 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
         }
     ) {
         LazyColumn(Modifier.fillMaxSize()) {
-            if (isSearching) {
+            if (isSearching && searchResults.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+                        LoadingIndicator()
                     }
                 }
             } else if (searchResults.isEmpty() && query.isEmpty()) {
@@ -735,7 +836,7 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
                         Text(place.address, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     },
                     leadingContent = {
-                        Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(44.dp)) {
+                        Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(48.dp)) {
                             Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Place, null, tint = MaterialTheme.colorScheme.onPrimaryContainer) }
                         }
                     },
@@ -746,6 +847,55 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
                     }
                 )
             }
+            if (searchResults.isNotEmpty()) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                        if (isSearching) {
+                            LoadingIndicator()
+                        } else if (hasMoreSearch) {
+                            OutlinedButton(onClick = { vm.loadMoreSearch() }) {
+                                Text("加载更多")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────
+// 出行方式选择（Material 3 Expressive ButtonGroup）
+// ─────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun RouteModeButtonGroup(selected: RouteMode, onSelect: (RouteMode) -> Unit, modifier: Modifier = Modifier) {
+    ButtonGroup(
+        overflowIndicator = { state ->
+            IconButton(onClick = { state.show() }) {
+                Icon(Icons.Default.MoreVert, contentDescription = "更多出行方式")
+            }
+        },
+        modifier = modifier
+    ) {
+        RouteMode.entries.forEach { mode ->
+            toggleableItem(
+                checked = mode == selected,
+                label = mode.label,
+                onCheckedChange = { if (it) onSelect(mode) },
+                icon = {
+                    Icon(
+                        when (mode) {
+                            RouteMode.DRIVING -> Icons.Default.DirectionsCar
+                            RouteMode.WALKING -> Icons.Default.DirectionsWalk
+                            RouteMode.BIKING -> Icons.Default.DirectionsBike
+                            RouteMode.TRANSIT -> Icons.Default.DirectionsBus
+                        },
+                        contentDescription = null
+                    )
+                },
+                weight = 1f
+            )
         }
     }
 }
@@ -753,7 +903,7 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
 // ─────────────────────────────────────────────
 // RoutePreviewScreen
 // ─────────────────────────────────────────────
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: () -> Unit) {
     val dest by vm.selectedDest.collectAsState()
@@ -764,6 +914,9 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentLocation by vm.currentLocation.collectAsState()
+    val routeMode by vm.routeMode.collectAsState()
+    val drivingPolicy by vm.drivingPolicy.collectAsState()
+    val isPlanning by vm.isPlanning.collectAsState()
 
     // NaviActivity 返回时重新创建普通百度规划 MapView。
     DisposableEffect(lifecycleOwner) {
@@ -815,7 +968,17 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
                     Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp).navigationBarsPadding().padding(bottom = 20.dp)) {
                         if (routes.isEmpty()) {
                             Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator()
+                                if (isPlanning) {
+                                    LoadingIndicator()
+                                } else {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("暂无方案", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        if (routeMode == RouteMode.TRANSIT) {
+                                            Spacer(Modifier.height(4.dp))
+                                            Text("公交算路需要城市信息，搜索时带上城市名试试", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.7f))
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             val route = routes.getOrNull(selIdx) ?: routes[0]
@@ -827,17 +990,59 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
                                         Spacer(Modifier.width(8.dp))
                                         Text(fmtDist(route.totalDistance), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
                                     }
-                                    val tc = route.trafficCondition
-                                    val tcColor = when(tc) { TrafficCondition.SMOOTH -> Color(0xFF4CAF50); TrafficCondition.SLOW -> Color(0xFFFF9800); else -> Color(0xFFF44336) }
-                                    val tcText = when(tc) { TrafficCondition.SMOOTH -> "畅通"; TrafficCondition.SLOW -> "缓慢"; else -> "拥堵" }
-                                    Surface(shape = MaterialTheme.shapes.extraSmall, color = tcColor.copy(0.15f)) {
-                                        Text(tcText, style = MaterialTheme.typography.labelMedium, color = tcColor, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                                    if (routeMode == RouteMode.DRIVING) {
+                                        val tc = route.trafficCondition
+                                        val tcColor = when(tc) { TrafficCondition.SMOOTH -> Color(0xFF4CAF50); TrafficCondition.SLOW -> Color(0xFFFF9800); else -> Color(0xFFF44336) }
+                                        val tcText = when(tc) { TrafficCondition.SMOOTH -> "畅通"; TrafficCondition.SLOW -> "缓慢"; else -> "拥堵" }
+                                        Surface(shape = MaterialTheme.shapes.extraSmall, color = tcColor.copy(0.15f)) {
+                                            Text(tcText, style = MaterialTheme.typography.labelMedium, color = tcColor, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                                        }
                                     }
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text("预计到达", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     val cal = Calendar.getInstance().apply { timeInMillis = System.currentTimeMillis() + route.totalDuration * 1000 }
                                     Text(String.format("%02d:%02d", cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE)), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            // 出行方式（Expressive ButtonGroup）
+                            RouteModeButtonGroup(
+                                selected = routeMode,
+                                onSelect = { vm.setRouteMode(it) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (routeMode == RouteMode.DRIVING) {
+                                Spacer(Modifier.height(8.dp))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    DrivingPolicyOption.entries.forEach { policy ->
+                                        FilterChip(
+                                            selected = policy == drivingPolicy,
+                                            onClick = { vm.setDrivingPolicy(policy) },
+                                            label = { Text(policy.label) }
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            // 步骤展开
+                            var showAllSteps by remember(route) { mutableStateOf(false) }
+                            val steps = route.steps
+                            val visibleSteps = if (showAllSteps) steps else steps.take(3)
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                visibleSteps.forEach { step ->
+                                    Row(Modifier.fillMaxWidth()) {
+                                        Text(step.instruction, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                        if (step.distance > 0) {
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(fmtDist(step.distance), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+                                if (steps.size > 3) {
+                                    TextButton(onClick = { showAllSteps = !showAllSteps }) {
+                                        Text(if (showAllSteps) "收起步骤" else "展开全部 ${steps.size} 步")
+                                    }
                                 }
                             }
                             Spacer(Modifier.height(12.dp))
@@ -855,35 +1060,50 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
                                 }
                                 Spacer(Modifier.height(12.dp))
                             }
-                            ExtendedFloatingActionButton(
-                                onClick = {
-                                    val d = dest
-                                    if (d != null && d.latLng.latitude != 0.0 && d.latLng.longitude != 0.0) {
-                                        // 规划页已有百度地图 SDK 返回的真实道路几何，直接预载给 Android Auto。
-                                        // 不依赖导航 SDK 的 routeInfoLatLngLists（该版本可能始终返回空）。
-                                        val path = route.pathPoints
-                                        val maxPoints = 1200
-                                        val stride = (path.size / maxPoints).coerceAtLeast(1)
-                                        val sampled = path.filterIndexed { index, _ -> index % stride == 0 }
-                                            .take(maxPoints).map { it.latitude to it.longitude }.toMutableList()
-                                        path.lastOrNull()?.let { end ->
-                                            val pair = end.latitude to end.longitude
-                                            if (sampled.lastOrNull() != pair) sampled.add(pair)
+                            if (routeMode == RouteMode.DRIVING) {
+                                ExtendedFloatingActionButton(
+                                    onClick = {
+                                        val d = dest
+                                        if (d != null && d.latLng.latitude != 0.0 && d.latLng.longitude != 0.0) {
+                                            // 规划页已有百度地图 SDK 返回的真实道路几何，直接预载给 Android Auto。
+                                            // 不依赖导航 SDK 的 routeInfoLatLngLists（该版本可能始终返回空）。
+                                            val path = route.pathPoints
+                                            val maxPoints = 1200
+                                            val stride = (path.size / maxPoints).coerceAtLeast(1)
+                                            val sampled = path.filterIndexed { index, _ -> index % stride == 0 }
+                                                .take(maxPoints).map { it.latitude to it.longitude }.toMutableList()
+                                            path.lastOrNull()?.let { end ->
+                                                val pair = end.latitude to end.longitude
+                                                if (sampled.lastOrNull() != pair) sampled.add(pair)
+                                            }
+                                            com.huimao.map.navigation.CarNavigationBridge.setRoutePoints(sampled)
+                                            showPlanningMap = false
+                                            pendingNaviLaunch = true
+                                        } else {
+                                            vm.startNavigation(route)
+                                            onStartNavigation()
                                         }
-                                        com.huimao.map.navigation.CarNavigationBridge.setRoutePoints(sampled)
-                                        showPlanningMap = false
-                                        pendingNaviLaunch = true
-                                    } else {
-                                        vm.startNavigation(route)
-                                        onStartNavigation()
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                                icon = { Icon(Icons.Default.Navigation, null) },
-                                text = { Text("开始导航", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-                            )
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    icon = { Icon(Icons.Default.Navigation, null) },
+                                    text = { Text("开始导航", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                                )
+                            } else {
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        "已展示${routeMode.label}路线方案，逐步导航目前仅支持驾车",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.padding(16.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
