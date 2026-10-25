@@ -442,7 +442,7 @@ object Routes {
     fun search(query: String) = "search/${android.net.Uri.encode(query)}"
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppNavGraph(
     navController: NavHostController = rememberNavController(),
@@ -450,8 +450,6 @@ fun AppNavGraph(
         androidx.compose.ui.platform.LocalContext.current.applicationContext as android.app.Application
     ))
 ) {
-    // Material 3 Expressive：搜索与路线页使用 Expressive 动效与组件。
-    MaterialExpressiveTheme {
     NavHost(
         navController = navController,
         startDestination = Routes.HOME,
@@ -523,7 +521,6 @@ fun AppNavGraph(
                 onPlaceSelected = { navController.navigate(Routes.ROUTE_PREVIEW) }
             )
         }
-    }
     }
 }
 
@@ -754,7 +751,7 @@ fun QuickCard(icon: ImageVector, label: String, sub: String, bg: Color, fg: Colo
 // ─────────────────────────────────────────────
 // SearchScreen
 // ─────────────────────────────────────────────
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit, onPlaceSelected: () -> Unit) {
     var query by remember(initialQuery) { mutableStateOf(initialQuery) }
@@ -787,7 +784,7 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
             if (isSearching && searchResults.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        LoadingIndicator()
+                        CircularProgressIndicator()
                     }
                 }
             } else if (searchResults.isEmpty() && query.isEmpty()) {
@@ -851,7 +848,7 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
                 item {
                     Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                         if (isSearching) {
-                            LoadingIndicator()
+                            CircularProgressIndicator()
                         } else if (hasMoreSearch) {
                             OutlinedButton(onClick = { vm.loadMoreSearch() }) {
                                 Text("加载更多")
@@ -867,7 +864,6 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
 // ─────────────────────────────────────────────
 // 出行方式选择（Material 3 Expressive ButtonGroup）
 // ─────────────────────────────────────────────
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun RouteModeButtonGroup(selected: RouteMode, onSelect: (RouteMode) -> Unit, modifier: Modifier = Modifier) {
     ButtonGroup(
@@ -903,7 +899,7 @@ fun RouteModeButtonGroup(selected: RouteMode, onSelect: (RouteMode) -> Unit, mod
 // ─────────────────────────────────────────────
 // RoutePreviewScreen
 // ─────────────────────────────────────────────
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: () -> Unit) {
     val dest by vm.selectedDest.collectAsState()
@@ -969,7 +965,7 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
                         if (routes.isEmpty()) {
                             Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                                 if (isPlanning) {
-                                    LoadingIndicator()
+                                    CircularProgressIndicator()
                                 } else {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Text("暂无方案", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
