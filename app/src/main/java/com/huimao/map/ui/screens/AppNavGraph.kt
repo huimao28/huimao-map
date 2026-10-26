@@ -319,8 +319,10 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 公交算路用的城市：优先搜索时识别的城市，其次从目的地地址前缀识别。 */
-    private fun transitCityFor(place: Place): String {
+    /** 公交算路用的城市：优先逆地理编码，其次搜索时识别的城市，最后从目的地地址前缀识别。 */
+    private suspend fun transitCityFor(place: Place): String {
+        val geoCity = try { BaiduMapManager.reverseGeoCity(place.latLng) } catch (_: Exception) { "" }
+        if (geoCity.isNotBlank()) return geoCity.removeSuffix("市")
         if (searchCityUsed.isNotBlank()) return searchCityUsed
         val addr = place.address.trim()
         return knownCities.firstOrNull { addr.startsWith(it) } ?: ""

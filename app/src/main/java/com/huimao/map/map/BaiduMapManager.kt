@@ -10,12 +10,17 @@ import com.baidu.mapapi.CoordType
 import com.baidu.mapapi.SDKInitializer
 import com.baidu.mapapi.search.core.SearchResult
 import com.baidu.mapapi.search.poi.OnGetPoiSearchResultListener
+import com.baidu.mapapi.search.geocode.GeoCoder
+import com.baidu.mapapi.search.geocode.OnGetGeoCoderResultListener
+import com.baidu.mapapi.search.geocode.ReverseGeoCodeOption
+import com.baidu.mapapi.search.geocode.ReverseGeoCodeResult
 import com.baidu.mapapi.search.poi.PoiCitySearchOption
 import com.baidu.mapapi.search.poi.PoiDetailResult
 import com.baidu.mapapi.search.poi.PoiDetailSearchOption
 import com.baidu.mapapi.search.poi.PoiNearbySearchOption
 import com.baidu.mapapi.search.poi.PoiResult
 import com.baidu.mapapi.search.poi.PoiSearch
+import com.baidu.mapapi.search.poi.PoiSortType
 import com.baidu.mapapi.search.route.BikingRoutePlanOption
 import com.baidu.mapapi.search.route.BikingRouteResult
 import com.baidu.mapapi.search.route.DrivingRoutePlanOption
@@ -366,7 +371,40 @@ object BaiduMapManager {
     }
 
     /**
+     * 逆地理编码：取坐标所在城市（用于公交算路的城市参数）。
+     * 失败返回空字符串，调用方再用搜索时识别的城市或地址前缀兜底。
+     */
+    suspend fun reverseGeoCity(location: LatLng): String = suspendCancellableCoroutine { cont ->
+        try {
+            val geoCoder = GeoCoder.newInstance()
+            val listener = object : OnGetGeoCoderResultListener {
+                override fun onGetGeoCodeResult(result: com.baidu.mapapi.search.geocode.GeoCodeResult?) {}
+                override fun onGetReverseGeoCodeResult(result: ReverseGeoCodeResult?) {
+                    try { geoCoder.destroy() } catch (_: Throwable) {}
+                    val city = result?.addressDetail?.city?.trim().orEmpty()
+                    if (cont.isActive) cont.resume(city)
+                }
+            }
+            geoCoder.setOnGetGeoCodeResultListener(listener)
+            val ok = geoCoder.reverseGeoCode(
+                ReverseGeoCodeOption().location(
+                    com.baidu.mapapi.model.LatLng(location.latitude, location.longitude)
+                )
+            )
+            if (!ok) {
+                try { geoCoder.destroy() } catch (_: Throwable) {}
+                if (cont.isActive) cont.resume("")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Reverse geocode exception: ${e.message}", e)
+            if (cont.isActive) cont.resume("")
+        }
+    }
+
+    /**
      * POI 搜索（周边或城市内），支持分页。
+     * 参数与白马地图的百度侧保持一致：城内 scope=2（详情）、不限本城、
+     * 返回地址；周边 scope=2、按距离排序、半径不硬限。
      */
     suspend fun searchPoi(
         keyword: String,
@@ -417,15 +455,20 @@ object BaiduMapManager {
                         .radius(5000)
                         .pageNum(pageNum)
                         .pageCapacity(pageCapacity)
+                        .scope(2)
+                        .sortType(PoiSortType.distance_from_near_to_far)
+                        .radiusLimit(false)
                 )
             } else {
-                search.searchInCity(
-                    PoiCitySearchOption()
-                        .city(city)
-                        .keyword(keyword)
-                        .pageNum(pageNum)
-                        .pageCapacity(pageCapacity)
-                )
+                val cityOption = PoiCitySearchOption()
+                    .city(city)
+                    .keyword(keyword)
+                    .pageNum(pageNum)
+                    .pageCapacity(pageCapacity)
+                    .scope(2)
+                    .cityLimit(false)
+                cityOption.mIsReturnAddr = true
+                search.searchInCity(cityOption)
             }
         } catch (e: Exception) {
             Log.e(TAG, "POI search exception: ${e.message}", e)
