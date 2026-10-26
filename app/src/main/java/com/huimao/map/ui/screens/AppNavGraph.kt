@@ -930,7 +930,9 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
         if (d != null && d.latLng.latitude != 0.0 && d.latLng.longitude != 0.0) {
             com.huimao.map.ui.NaviActivity.start(
                 context, d.latLng.latitude, d.latLng.longitude, d.name,
-                currentLocation?.latitude ?: 0.0, currentLocation?.longitude ?: 0.0
+                currentLocation?.latitude ?: 0.0, currentLocation?.longitude ?: 0.0,
+                routeIndex = selIdx,
+                routePref = com.huimao.map.ui.NaviActivity.preferenceFor(drivingPolicy)
             )
         }
         pendingNaviLaunch = false

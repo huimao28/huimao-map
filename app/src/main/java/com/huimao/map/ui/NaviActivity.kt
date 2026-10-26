@@ -69,6 +69,10 @@ class NaviActivity : Activity() {
     private var routePlanAttempt = 0
     private var naviEngineReady = false
     private var routePlanStarted = false
+    // 预览页选定的方案（SDK 选路用）：导航不再另起一套默认选路，预览选第几条就导航第几条。
+    private var previewRouteIndex = 0
+    private var previewRoutePref = IBNRoutePlanManager.RoutePlanPreference.ROUTE_PLAN_PREFERENCE_DEFAULT
+    private var selectedRouteIndex: Int? = null
     private var locationWaitStartedAt = 0L
     private var locationClient: LocationClient? = null
     private var locationListener: BDAbstractLocationListener? = null
@@ -278,17 +282,35 @@ class NaviActivity : Activity() {
         private const val EXTRA_DEST_LAT = "dest_lat"
         private const val EXTRA_DEST_LNG = "dest_lng"
         private const val EXTRA_DEST_NAME = "dest_name"
+        private const val EXTRA_ROUTE_INDEX = "route_index"
+        private const val EXTRA_ROUTE_PREF = "route_pref"
 
         fun start(context: Context, destLat: Double, destLng: Double, destName: String,
-                  startLat: Double = 0.0, startLng: Double = 0.0) {
+                  startLat: Double = 0.0, startLng: Double = 0.0,
+                  routeIndex: Int = 0,
+                  routePref: Int = IBNRoutePlanManager.RoutePlanPreference.ROUTE_PLAN_PREFERENCE_DEFAULT) {
             context.startActivity(Intent(context, NaviActivity::class.java).apply {
                 putExtra(EXTRA_START_LAT, startLat)
                 putExtra(EXTRA_START_LNG, startLng)
                 putExtra(EXTRA_DEST_LAT, destLat)
                 putExtra(EXTRA_DEST_LNG, destLng)
                 putExtra(EXTRA_DEST_NAME, destName)
+                putExtra(EXTRA_ROUTE_INDEX, routeIndex)
+                putExtra(EXTRA_ROUTE_PREF, routePref)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             })
+        }
+
+        /** 预览页驾车策略 → 导航 SDK 算路偏好（与白马地图的偏好档位对齐）。 */
+        fun preferenceFor(policy: com.huimao.map.map.DrivingPolicyOption): Int = when (policy) {
+            com.huimao.map.map.DrivingPolicyOption.TIME_FIRST ->
+                IBNRoutePlanManager.RoutePlanPreference.ROUTE_PLAN_PREFERENCE_TIME_FIRST
+            com.huimao.map.map.DrivingPolicyOption.AVOID_JAM ->
+                IBNRoutePlanManager.RoutePlanPreference.ROUTE_PLAN_PREFERENCE_AVOID_TRAFFIC_JAM
+            com.huimao.map.map.DrivingPolicyOption.DIS_FIRST ->
+                IBNRoutePlanManager.RoutePlanPreference.ROUTE_PLAN_PREFERENCE_DISTANCE_FIRST
+            com.huimao.map.map.DrivingPolicyOption.FEE_FIRST ->
+                IBNRoutePlanManager.RoutePlanPreference.ROUTE_PLAN_PREFERENCE_NOTOLL
         }
     }
 
@@ -298,6 +320,7 @@ class NaviActivity : Activity() {
                 IBNRoutePlanManager.MSG_NAVI_ROUTE_PLAN_START -> Log.i(TAG, "Route plan started")
                 IBNRoutePlanManager.MSG_NAVI_ROUTE_PLAN_SUCCESS -> {
                     Log.i(TAG, "Route plan success; waiting for SDK TO_NAVI")
+                    applyPreviewRouteSelection()
                     syncRouteGeometryToCar()
                 }
                 IBNRoutePlanManager.MSG_NAVI_ROUTE_PLAN_TO_NAVI -> startGuideOnce()
@@ -323,6 +346,11 @@ class NaviActivity : Activity() {
         destLat = intent.getDoubleExtra(EXTRA_DEST_LAT, 0.0)
         destLng = intent.getDoubleExtra(EXTRA_DEST_LNG, 0.0)
         destName = intent.getStringExtra(EXTRA_DEST_NAME) ?: ""
+        previewRouteIndex = intent.getIntExtra(EXTRA_ROUTE_INDEX, 0)
+        previewRoutePref = intent.getIntExtra(
+            EXTRA_ROUTE_PREF,
+            IBNRoutePlanManager.RoutePlanPreference.ROUTE_PLAN_PREFERENCE_DEFAULT
+        )
         loadVoiceSettings()
         audioManager = getSystemService(AudioManager::class.java)
         if (voiceEnabled && ttsProvider == "system") initSystemTts()
@@ -738,7 +766,7 @@ class NaviActivity : Activity() {
 
             val ok = BaiduNaviManagerFactory.getRoutePlanManager().routePlan(
                 listOf(start, dest),
-                IBNRoutePlanManager.RoutePlanPreference.ROUTE_PLAN_PREFERENCE_DEFAULT,
+                previewRoutePref,
                 null,
                 routePlanHandler
             )
@@ -975,12 +1003,32 @@ class NaviActivity : Activity() {
 
     private val destinationManeuverCode: Int get() = 6
 
+    /**
+     * 预览页选定的方案 → SDK 选路（白马地图同款 selectRoute）。
+     * 在算路成功后、诱导开始前执行，导航与车机轨迹都跟随同一条；
+     * 失败或越界时保持 SDK 默认选路，不阻塞导航。
+     */
+    private fun applyPreviewRouteSelection() {
+        try {
+            val count = BaiduNaviManagerFactory.getRoutePlanManager().getRoutePlanInfo()
+                ?.routeInfoLatLngLists?.size ?: 0
+            if (count <= 0) return
+            val index = previewRouteIndex.coerceIn(0, count - 1)
+            BaiduNaviManagerFactory.getRouteGuideManager().selectRoute(index)
+            selectedRouteIndex = index
+            Log.i(TAG, "Applied preview route selection: $index/$count")
+        } catch (e: Throwable) {
+            Log.w(TAG, "applyPreviewRouteSelection failed", e)
+        }
+    }
+
     private fun syncRouteGeometryToCar() {
         // 路线规划成功后始终保存百度路线。Android Auto 可能在手机导航开始后才连接，
         // 若按监听器存在与否跳过同步，车机将永远拿不到路线轨迹。
         try {
             val infos = BaiduNaviManagerFactory.getRoutePlanManager().getRoutePlanInfo()
-            val selected = BaiduNaviManagerFactory.getRoutePlanManager().selectRouteId
+            val selected = selectedRouteIndex
+                ?: BaiduNaviManagerFactory.getRoutePlanManager().selectRouteId
             val routes = infos?.routeInfoLatLngLists.orEmpty()
             val segments = routes.getOrNull(selected) ?: routes.firstOrNull().orEmpty()
             val total = segments.sumOf { it.size }
