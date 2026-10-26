@@ -51,7 +51,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import com.huimao.map.data.AppSettingsKeys
 import com.huimao.map.data.dataStore
 import kotlinx.coroutines.launch
@@ -953,7 +953,9 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
         vm.setPlanningState(true)
         vm.setRoutesFromSdk(emptyList())
         val ak = try {
-            first(context.applicationContext.dataStore.data)[AppSettingsKeys.BAIDU_API_KEY] ?: ""
+            context.applicationContext.dataStore.data
+                .map { it[AppSettingsKeys.BAIDU_API_KEY] ?: "" }
+                .first()
         } catch (_: Exception) { "" }
         if (ak.isBlank()) {
             vm.setPlanningState(false)
