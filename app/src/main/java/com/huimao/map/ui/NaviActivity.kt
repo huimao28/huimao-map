@@ -54,6 +54,8 @@ import com.huimao.map.data.AppSettingsKeys
 import com.huimao.map.data.dataStore
 import com.huimao.map.navigation.CarLane
 import com.huimao.map.navigation.CarNavigationBridge
+import com.huimao.map.navigation.NaviEngineManager
+import com.huimao.map.navigation.SdkRoutePlanner
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -64,7 +66,6 @@ private const val TAG = "NaviActivity"
 class NaviActivity : Activity() {
     private var guideCreated = false
     private var guideCreateAttempted = false
-    private var engineInitStarted = false
     private var closingNavi = false
     private var routePlanAttempt = 0
     private var naviEngineReady = false
@@ -73,6 +74,8 @@ class NaviActivity : Activity() {
     private var previewRouteIndex = 0
     private var previewRoutePref = IBNRoutePlanManager.RoutePlanPreference.ROUTE_PLAN_PREFERENCE_DEFAULT
     private var selectedRouteIndex: Int? = null
+    // 预览页已用 SDK 算好路线：NaviActivity 复用，不再自算路。
+    private var alreadyPlanned = false
     private var locationWaitStartedAt = 0L
     private var locationClient: LocationClient? = null
     private var locationListener: BDAbstractLocationListener? = null
@@ -284,11 +287,13 @@ class NaviActivity : Activity() {
         private const val EXTRA_DEST_NAME = "dest_name"
         private const val EXTRA_ROUTE_INDEX = "route_index"
         private const val EXTRA_ROUTE_PREF = "route_pref"
+        private const val EXTRA_ALREADY_PLANNED = "already_planned"
 
         fun start(context: Context, destLat: Double, destLng: Double, destName: String,
                   startLat: Double = 0.0, startLng: Double = 0.0,
                   routeIndex: Int = 0,
-                  routePref: Int = IBNRoutePlanManager.RoutePlanPreference.ROUTE_PLAN_PREFERENCE_DEFAULT) {
+                  routePref: Int = IBNRoutePlanManager.RoutePlanPreference.ROUTE_PLAN_PREFERENCE_DEFAULT,
+                  alreadyPlanned: Boolean = false) {
             context.startActivity(Intent(context, NaviActivity::class.java).apply {
                 putExtra(EXTRA_START_LAT, startLat)
                 putExtra(EXTRA_START_LNG, startLng)
@@ -297,6 +302,7 @@ class NaviActivity : Activity() {
                 putExtra(EXTRA_DEST_NAME, destName)
                 putExtra(EXTRA_ROUTE_INDEX, routeIndex)
                 putExtra(EXTRA_ROUTE_PREF, routePref)
+                putExtra(EXTRA_ALREADY_PLANNED, alreadyPlanned)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             })
         }
@@ -351,6 +357,7 @@ class NaviActivity : Activity() {
             EXTRA_ROUTE_PREF,
             IBNRoutePlanManager.RoutePlanPreference.ROUTE_PLAN_PREFERENCE_DEFAULT
         )
+        alreadyPlanned = intent.getBooleanExtra(EXTRA_ALREADY_PLANNED, false)
         loadVoiceSettings()
         audioManager = getSystemService(AudioManager::class.java)
         if (voiceEnabled && ttsProvider == "system") initSystemTts()
@@ -635,42 +642,41 @@ class NaviActivity : Activity() {
     }
 
     private fun initNaviEngine() {
-        if (engineInitStarted) return
-        engineInitStarted = true
         val ak = savedAk()
         if (ak.isBlank() || ak == "PLACEHOLDER_AK") { showError("❌ 未配置百度地图 AK"); return }
-        try { SDKInitializer.setAgreePrivacy(applicationContext, true) } catch (_: Throwable) {}
-        try { SDKInitializer.setApiKey(ak) } catch (_: Throwable) {}
-        val config = BNaviInitConfig.Builder()
-            .sdcardRootPath(getExternalFilesDir(null)?.absolutePath ?: filesDir.absolutePath)
-            .naviInitListener(object : IBaiduNaviManager.INaviInitListener {
-                override fun onAuthResult(status: Int, msg: String?) { Log.i(TAG, "auth=$status $msg") }
-                override fun initStart() { Log.i(TAG, "navi init start") }
-                override fun initSuccess() = runOnUiThread {
-                    try {
-                        BaiduNaviManagerFactory.getBaiduNaviManager().apply {
-                            // 使用 NaviActivity 的百度 LocationClient 作为导航引擎位置源。
-                            // 这样 MainActivity 暂停后，导航不会退回 SDK 默认北京位置。
-                            externalLocation(true)
-                            setGpsNeverClose(true)
-                            initSensor()
-                        }
-                    } catch (e: Throwable) { Log.e(TAG, "Navigation GPS start failed", e) }
+        // 引擎初始化已抽到 NaviEngineManager：预览页可能已经初始化过，
+        // 这里复用即可。TTS 仍归 NaviActivity（引擎早已就绪时 initSuccess
+        // 不会再触发，TTS 必须在这里独立初始化）。
+        NaviEngineManager.ensureInitialized(
+            this, ak,
+            onReady = {
+                runOnUiThread {
                     initSelectedTts()
-                    // 启动参数中的起点只作为兜底，不写入导航引擎定位通道。
-                    // 部分手机/车机切换时 MainActivity 会给出跨国缓存点；若把它设为可靠基准，
-                    // 后续真实定位会被防跳点逻辑误杀，最终导致路线规划失败。
-                    naviEngineReady = true
+                // 启动参数中的起点只作为兜底，不写入导航引擎定位通道。
+                // 部分手机/车机切换时 MainActivity 会给出跨国缓存点；若把它设为可靠基准，
+                // 后续真实定位会被防跳点逻辑误杀，最终导致路线规划失败。
+                naviEngineReady = true
+                if (alreadyPlanned && SdkRoutePlanner.hasPlannedRoute()) {
+                    enterPlannedGuide()
+                } else {
                     startRoutePlanWhenLocationReady()
                 }
-                override fun initFailed(errCode: Int) = runOnUiThread {
-                    showError("❌ 导航引擎初始化失败 errCode=$errCode")
                 }
-            }).build()
-        try {
-            BaiduNaviManagerFactory.getBaiduNaviManager().enableOutLog(false)
-            BaiduNaviManagerFactory.getBaiduNaviManager().init(this, config)
-        } catch (e: Throwable) { showError("❌ init() 异常: ${e.message}") }
+            },
+            onFailed = { errCode ->
+                runOnUiThread { showError("❌ 导航引擎初始化失败 errCode=$errCode") }
+            }
+        )
+    }
+
+    /**
+     * 预览页已算好路线时的进入路径：不再自算路，直接按预览选定的方案进诱导。
+     * SDK 里没有现成路线时（如进程被回收）回落到老流程自算路。
+     */
+    private fun enterPlannedGuide() {
+        applyPreviewRouteSelection()
+        syncRouteGeometryToCar()
+        startGuideOnce()
     }
 
     // RouteResultManager 不在这里提前初始化；routePlan 适配层会在算路完成后

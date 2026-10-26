@@ -46,10 +46,14 @@ import com.huimao.map.map.RouteMode
 import com.huimao.map.map.BaiduMapView
 import com.huimao.map.map.MapLayerType
 import com.huimao.map.model.*
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import com.huimao.map.data.AppSettingsKeys
+import com.huimao.map.data.dataStore
 import kotlinx.coroutines.launch
 import android.content.Context
 import android.speech.tts.TextToSpeech
@@ -315,8 +319,20 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
             } else place
             _selectedDest.value = dest
             _routes.value = emptyList()
-            planForDestination(dest)
+            // 驾车模式不走 RoutePlanSearch：预览页用导航 SDK 算路（白马地图式），
+            // RoutePreviewScreen 的 LaunchedEffect 监听目的地/方式/策略触发 SDK 规划。
+            if (_routeMode.value != RouteMode.DRIVING) planForDestination(dest)
         }
+    }
+
+    /** 预览页 SDK 算路结果写回（与 RoutePlanSearch 结果共用同一条 routes 流）。 */
+    fun setRoutesFromSdk(routes: List<RouteResult>) {
+        _routes.value = routes
+    }
+
+    /** 预览页 SDK 规划进行中状态。 */
+    fun setPlanningState(planning: Boolean) {
+        _isPlanning.value = planning
     }
 
     /** 公交算路用的城市：优先逆地理编码，其次搜索时识别的城市，最后从目的地地址前缀识别。 */
@@ -351,19 +367,23 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 切换出行方式并重新算路。 */
+    /** 切换出行方式并重新算路。驾车切回时清空旧结果，等预览页 SDK 规划接手。 */
     fun setRouteMode(mode: RouteMode) {
         if (_routeMode.value == mode) return
         _routeMode.value = mode
-        _selectedDest.value?.let { planForDestination(it) }
+        if (mode == RouteMode.DRIVING) {
+            _routes.value = emptyList()
+        } else {
+            _selectedDest.value?.let { planForDestination(it) }
+        }
     }
 
-    /** 切换驾车策略并重新算路（仅驾车模式有效）。 */
+    /** 切换驾车策略并重新算路（仅驾车模式有效，SDK 规划由预览页 effect 触发）。 */
     fun setDrivingPolicy(policy: DrivingPolicyOption) {
         if (_drivingPolicy.value == policy) return
         _drivingPolicy.value = policy
         if (_routeMode.value == RouteMode.DRIVING) {
-            _selectedDest.value?.let { planForDestination(it) }
+            _routes.value = emptyList()
         }
     }
 
@@ -922,6 +942,50 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // 驾车模式：白马地图式 SDK 算路。目的地/出行方式/驾车策略任一变化都重新算路；
+    // 算路结果直接写回 vm.routes，预览页读 SDK tab（不再用 RoutePlanSearch 另算一套）。
+    // effect 取消或重启时取消上一轮未完成的算路，避免旧结果覆盖新目的地。
+    LaunchedEffect(dest, routeMode, drivingPolicy) {
+        if (routeMode != RouteMode.DRIVING) return@LaunchedEffect
+        val d = dest ?: return@LaunchedEffect
+        val origin = currentLocation ?: return@LaunchedEffect
+        if (origin.latitude == 0.0 || origin.longitude == 0.0) return@LaunchedEffect
+        vm.setPlanningState(true)
+        vm.setRoutesFromSdk(emptyList())
+        val ak = try {
+            first(context.applicationContext.dataStore.data)[AppSettingsKeys.BAIDU_API_KEY] ?: ""
+        } catch (_: Exception) { "" }
+        if (ak.isBlank()) {
+            vm.setPlanningState(false)
+            return@LaunchedEffect
+        }
+        val activity = context as? android.app.Activity ?: run {
+            vm.setPlanningState(false)
+            return@LaunchedEffect
+        }
+        val handler = com.huimao.map.navigation.SdkRoutePlanner.plan(
+            activity, ak, origin, d,
+            com.huimao.map.ui.NaviActivity.preferenceFor(drivingPolicy),
+            onResult = { results ->
+                // 只有当前目的地仍是本轮算路的目的地时才写回，防止旧结果覆盖。
+                if (vm.selectedDest.value?.latLng == d.latLng) {
+                    vm.setRoutesFromSdk(results)
+                    if (results.isNotEmpty()) selIdx = selIdx.coerceIn(0, results.size - 1)
+                }
+                vm.setPlanningState(false)
+            },
+            onError = {
+                if (vm.selectedDest.value?.latLng == d.latLng) vm.setRoutesFromSdk(emptyList())
+                vm.setPlanningState(false)
+            }
+        )
+        try {
+            awaitCancellation()
+        } finally {
+            com.huimao.map.navigation.SdkRoutePlanner.cancel(handler)
+        }
+    }
+
     // 先让 Compose 真正 dispose MapView（onPause + onDestroy），下一帧再启动导航。
     LaunchedEffect(pendingNaviLaunch) {
         if (!pendingNaviLaunch) return@LaunchedEffect
@@ -932,7 +996,8 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
                 context, d.latLng.latitude, d.latLng.longitude, d.name,
                 currentLocation?.latitude ?: 0.0, currentLocation?.longitude ?: 0.0,
                 routeIndex = selIdx,
-                routePref = com.huimao.map.ui.NaviActivity.preferenceFor(drivingPolicy)
+                routePref = com.huimao.map.ui.NaviActivity.preferenceFor(drivingPolicy),
+                alreadyPlanned = true
             )
         }
         pendingNaviLaunch = false
@@ -987,7 +1052,8 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
                                         Spacer(Modifier.width(8.dp))
                                         Text(fmtDist(route.totalDistance), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
                                     }
-                                    if (routeMode == RouteMode.DRIVING) {
+                                    // SDK 方案不带路况角标（tab 只有时间/距离/收费），只给旧 RoutePlanSearch 驾车方案显示。
+                                    if (routeMode == RouteMode.DRIVING && route.trafficCondition != TrafficCondition.UNKNOWN) {
                                         val tc = route.trafficCondition
                                         val tcColor = when(tc) { TrafficCondition.SMOOTH -> Color(0xFF4CAF50); TrafficCondition.SLOW -> Color(0xFFFF9800); else -> Color(0xFFF44336) }
                                         val tcText = when(tc) { TrafficCondition.SMOOTH -> "畅通"; TrafficCondition.SLOW -> "缓慢"; else -> "拥堵" }
@@ -1049,7 +1115,13 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
                                     routes.forEachIndexed { i, r ->
                                         FilterChip(
                                             selected = i == selIdx,
-                                            onClick = { selIdx = i },
+                                            onClick = {
+                                                selIdx = i
+                                                // SDK 算路的方案：点选即调 SDK 选路（白马地图同款）。
+                                                if (r.routeId.startsWith("sdk-")) {
+                                                    com.huimao.map.navigation.SdkRoutePlanner.selectRoute(i)
+                                                }
+                                            },
                                             label = { Text("${fmtDur(r.totalDuration)} · ${fmtDist(r.totalDistance)}", style = MaterialTheme.typography.labelSmall) },
                                             modifier = Modifier.weight(1f)
                                         )
