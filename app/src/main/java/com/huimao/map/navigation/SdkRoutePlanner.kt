@@ -129,7 +129,10 @@ object SdkRoutePlanner {
                 totalDistance = tab.length,
                 totalDuration = tab.passTime.toLong(),
                 trafficCondition = TrafficCondition.UNKNOWN,
-                routeType = if (i == 0) RouteType.RECOMMENDED else RouteType.FASTEST
+                routeType = if (i == 0) RouteType.RECOMMENDED else RouteType.FASTEST,
+                toll = tab.toll,
+                lights = tab.lights,
+                label = tab.pusLabelName ?: ""
             )
         }
     }

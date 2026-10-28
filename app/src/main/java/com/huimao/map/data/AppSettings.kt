@@ -21,4 +21,5 @@ object AppSettingsKeys {
     val CAR_DIAG_ENABLED = booleanPreferencesKey("car_diag_enabled")
     val ROUTE_TYPE = intPreferencesKey("route_type")
     val DARK_MAP = booleanPreferencesKey("dark_map")
+    val SEARCH_HISTORY = stringPreferencesKey("search_history")
 }

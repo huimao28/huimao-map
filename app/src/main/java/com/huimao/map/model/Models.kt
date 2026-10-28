@@ -37,7 +37,11 @@ data class RouteResult(
     val totalDistance: Double = 0.0,
     val totalDuration: Long = 0L,
     val trafficCondition: TrafficCondition = TrafficCondition.UNKNOWN,
-    val routeType: RouteType = RouteType.RECOMMENDED
+    val routeType: RouteType = RouteType.RECOMMENDED,
+    // SDK 路线 tab 自带的数据（白马地图路线页显示的收费与红绿灯就来自这里）。
+    val toll: Int = 0,
+    val lights: Int = 0,
+    val label: String = ""
 )
 
 /**

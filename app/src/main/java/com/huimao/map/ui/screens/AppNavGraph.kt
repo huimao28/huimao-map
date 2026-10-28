@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import androidx.datastore.preferences.core.edit
 import com.huimao.map.data.AppSettingsKeys
 import com.huimao.map.data.dataStore
 import kotlinx.coroutines.launch
@@ -218,9 +219,79 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
     // 白马地图的搜索页容量就是 20 条，之前用的 10 条是自己定的。
     private val searchPageSize = 20
 
-    private val knownCities = listOf("北京", "上海", "天津", "重庆", "广州", "深圳", "长沙", "常德",
+    val knownCities = listOf("北京", "上海", "天津", "重庆", "广州", "深圳", "长沙", "常德",
         "武汉", "成都", "杭州", "南京", "西安", "郑州", "济南", "青岛", "厦门", "福州",
         "昆明", "贵阳", "南宁", "海口", "三亚", "拉萨", "乌鲁木齐", "哈尔滨", "长春", "沈阳")
+
+    // 搜索页：白马地图同款三件套——搜附近开关、指定城市筛选、搜索历史。
+    private val _searchNearby = MutableStateFlow(true)
+    val searchNearby: StateFlow<Boolean> = _searchNearby.asStateFlow()
+    private val _searchCity = MutableStateFlow("")
+    val searchCity: StateFlow<String> = _searchCity.asStateFlow()
+    private val _locatedCity = MutableStateFlow("")
+    val locatedCity: StateFlow<String> = _locatedCity.asStateFlow()
+    private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
+    val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
+
+    fun setSearchNearby(on: Boolean) {
+        _searchNearby.value = on
+    }
+
+    fun setSearchCity(city: String) {
+        _searchCity.value = city
+    }
+
+    /** 逆地理编码一次当前城市，供城市筛选默认显示（白马地图搜索页右上角的城市）。 */
+    fun refreshLocatedCity() {
+        val loc = _currentLocation.value ?: return
+        if (_locatedCity.value.isNotBlank()) return
+        viewModelScope.launch {
+            try {
+                val city = BaiduMapManager.reverseGeoCity(loc)
+                if (city.isNotBlank()) {
+                    _locatedCity.value = if (city.endsWith("市")) city else "${city}市"
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    fun loadSearchHistory() {
+        viewModelScope.launch {
+            try {
+                val raw = getApplication<Application>().dataStore.data
+                    .map { it[AppSettingsKeys.SEARCH_HISTORY] ?: "" }
+                    .first()
+                _searchHistory.value = raw.split('\u001f').filter { it.isNotBlank() }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun saveSearchHistory(list: List<String>) {
+        viewModelScope.launch {
+            try {
+                getApplication<Application>().dataStore.edit {
+                    it[AppSettingsKeys.SEARCH_HISTORY] = list.joinToString("\u001f")
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    fun addSearchHistory(keyword: String) {
+        val kw = keyword.trim()
+        if (kw.length < 2) return
+        val updated = (listOf(kw) + _searchHistory.value.filter { it != kw }).take(20)
+        _searchHistory.value = updated
+        saveSearchHistory(updated)
+    }
+
+    fun removeSearchHistory(keyword: String) {
+        val updated = _searchHistory.value.filter { it != keyword }
+        _searchHistory.value = updated
+        saveSearchHistory(updated)
+    }
 
     /** 执行一次搜索（第 pageNum 页），返回结果与识别到的城市。 */
     private suspend fun runSearch(keyword: String, cityHint: String, pageNum: Int): Pair<List<Place>, String> {
@@ -231,16 +302,24 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
         val cleanKeyword = if (detectedCity.isNotBlank()) {
             text.removePrefix(detectedCity).removePrefix("市").trim().ifBlank { text }
         } else text
+        // 白马地图的搜索分两档：搜附近开 = 周边搜（50km、按距离排序），
+        // 搜附近关 = 在指定城市里搜（默认当前城市，可手动换城市）。
+        // 关键词自带城市前缀时仍优先按前缀城市搜。
         val results = if (detectedCity.isNotBlank()) {
             BaiduMapManager.searchPoi(cleanKeyword, city = detectedCity, pageNum = pageNum, pageCapacity = searchPageSize)
-        } else if (loc != null) {
-            val nearby = BaiduMapManager.searchPoi(cleanKeyword, location = loc, pageNum = pageNum, pageCapacity = searchPageSize)
-            if (pageNum > 0 || nearby.size >= 5) nearby else {
-                (nearby + BaiduMapManager.searchPoi(cleanKeyword, city = "全国", pageNum = 0, pageCapacity = searchPageSize))
-                    .distinctBy { it.uid.ifBlank { "${it.name}-${it.latLng}" } }
+        } else if (_searchNearby.value) {
+            if (loc != null) {
+                val nearby = BaiduMapManager.searchPoi(cleanKeyword, location = loc, pageNum = pageNum, pageCapacity = searchPageSize)
+                if (pageNum > 0 || nearby.size >= 5) nearby else {
+                    (nearby + BaiduMapManager.searchPoi(cleanKeyword, city = "全国", pageNum = 0, pageCapacity = searchPageSize))
+                        .distinctBy { it.uid.ifBlank { "${it.name}-${it.latLng}" } }
+                }
+            } else {
+                BaiduMapManager.searchPoi(cleanKeyword, city = "全国", pageNum = pageNum, pageCapacity = searchPageSize)
             }
         } else {
-            BaiduMapManager.searchPoi(cleanKeyword, city = "全国", pageNum = pageNum, pageCapacity = searchPageSize)
+            val city = _searchCity.value.ifBlank { _locatedCity.value.ifBlank { "全国" } }
+            BaiduMapManager.searchPoi(cleanKeyword, city = city, pageNum = pageNum, pageCapacity = searchPageSize)
         }
         return results to detectedCity
     }
@@ -264,6 +343,8 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
             _hasMoreSearch.value = false
             return
         }
+        // 记一条搜索历史（白马地图搜索页的历史记录）。
+        addSearchHistory(keyword)
         // 取消上一次搜索
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
@@ -782,6 +863,17 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
     val searchResults by vm.searchResults.collectAsState()
     val isSearching by vm.isSearching.collectAsState()
     val hasMoreSearch by vm.hasMoreSearch.collectAsState()
+    val searchNearby by vm.searchNearby.collectAsState()
+    val searchCity by vm.searchCity.collectAsState()
+    val locatedCity by vm.locatedCity.collectAsState()
+    val searchHistory by vm.searchHistory.collectAsState()
+    var cityMenuOpen by remember { mutableStateOf(false) }
+    val effCity = searchCity.ifBlank { locatedCity.ifBlank { "全国" } }
+
+    LaunchedEffect(Unit) {
+        vm.loadSearchHistory()
+        vm.refreshLocatedCity()
+    }
 
     // 输入变化时触发真实搜索（300ms debounce 防止快速输入并发崩溃）
     LaunchedEffect(query) {
@@ -804,7 +896,54 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
             if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Clear, null) }
         }
     ) {
-        LazyColumn(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            // 白马地图搜索页同款：搜附近开关 + 城市筛选（搜附近关时在指定城市里搜）。
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    Modifier.clickable {
+                        val next = !searchNearby
+                        vm.setSearchNearby(next)
+                        if (query.length >= 2) vm.searchPlaces(query)
+                    },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = searchNearby,
+                        onCheckedChange = {
+                            vm.setSearchNearby(it)
+                            if (query.length >= 2) vm.searchPlaces(query)
+                        }
+                    )
+                    Text("搜附近", style = MaterialTheme.typography.bodyMedium)
+                }
+                Spacer(Modifier.weight(1f))
+                Box {
+                    TextButton(onClick = { cityMenuOpen = true }) {
+                        Text(effCity)
+                        Icon(Icons.Default.ArrowDropDown, null)
+                    }
+                    DropdownMenu(
+                        expanded = cityMenuOpen,
+                        onDismissRequest = { cityMenuOpen = false }
+                    ) {
+                        (listOf("全国") + listOfNotNull(locatedCity.takeIf { it.isNotBlank() }) + vm.knownCities)
+                            .distinct().forEach { city ->
+                                DropdownMenuItem(
+                                    text = { Text(city) },
+                                    onClick = {
+                                        vm.setSearchCity(city)
+                                        cityMenuOpen = false
+                                        if (query.length >= 2) vm.searchPlaces(query)
+                                    }
+                                )
+                            }
+                    }
+                }
+            }
+            LazyColumn(Modifier.weight(1f)) {
             if (isSearching && searchResults.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -813,10 +952,30 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
                 }
             } else if (searchResults.isEmpty() && query.isEmpty()) {
                 item {
-                    Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Search, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.4f))
-                        Spacer(Modifier.height(8.dp))
-                        Text("输入地点名称或地址进行搜索", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (searchHistory.isNotEmpty()) {
+                        Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+                            Text("搜索历史", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(4.dp))
+                            searchHistory.forEach { kw ->
+                                Row(
+                                    Modifier.fillMaxWidth().clickable { query = kw },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(kw, Modifier.weight(1f).padding(vertical = 12.dp), style = MaterialTheme.typography.bodyMedium)
+                                    IconButton(onClick = { vm.removeSearchHistory(kw) }) {
+                                        Icon(Icons.Default.Close, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Search, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.4f))
+                            Spacer(Modifier.height(8.dp))
+                            Text("输入地点名称或地址进行搜索", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             } else if (searchResults.isEmpty() && query.length >= 2 && !isSearching) {
@@ -880,6 +1039,7 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
                         }
                     }
                 }
+            }
             }
         }
     }
@@ -1056,13 +1216,36 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
                             }
                         } else {
                             val route = routes.getOrNull(selIdx) ?: routes[0]
-                            // 路线摘要
+                            val isSdkRoute = route.routeId.startsWith("sdk-")
+                            // 白马地图路线页同款：起点 → 终点一行。
+                            val d = dest
+                            if (d != null) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("我的位置", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Icon(Icons.Default.ArrowForward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp).size(16.dp))
+                                    Text(d.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
+                            // 路线摘要：SDK 方案按白马地图路线页格式（标签 - 距离 - 时间 - 收费 + 红绿灯数）。
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column {
-                                    Row(verticalAlignment = Alignment.Bottom) {
-                                        Text(fmtDur(route.totalDuration), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(fmtDist(route.totalDistance), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+                                    if (isSdkRoute) {
+                                        Text(
+                                            "${route.label.ifBlank { "推荐" }} - ${fmtDist(route.totalDistance)} - ${fmtDur(route.totalDuration)}" +
+                                                if (route.toll > 0) " - ${route.toll}元" else "",
+                                            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold
+                                        )
+                                        if (route.lights > 0) {
+                                            Spacer(Modifier.height(2.dp))
+                                            Text("${route.lights}个红绿灯", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    } else {
+                                        Row(verticalAlignment = Alignment.Bottom) {
+                                            Text(fmtDur(route.totalDuration), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(fmtDist(route.totalDistance), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+                                        }
                                     }
                                     // SDK 方案不带路况角标（tab 只有时间/距离/收费），只给旧 RoutePlanSearch 驾车方案显示。
                                     if (routeMode == RouteMode.DRIVING && route.trafficCondition != TrafficCondition.UNKNOWN) {
@@ -1134,7 +1317,7 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
                                                     com.huimao.map.navigation.SdkRoutePlanner.selectRoute(i)
                                                 }
                                             },
-                                            label = { Text("${fmtDur(r.totalDuration)} · ${fmtDist(r.totalDistance)}", style = MaterialTheme.typography.labelSmall) },
+                                            label = { Text((if (r.routeId.startsWith("sdk-") && r.label.isNotBlank()) "${r.label} · " else "") + "${fmtDur(r.totalDuration)} · ${fmtDist(r.totalDistance)}", style = MaterialTheme.typography.labelSmall) },
                                             modifier = Modifier.weight(1f)
                                         )
                                     }
