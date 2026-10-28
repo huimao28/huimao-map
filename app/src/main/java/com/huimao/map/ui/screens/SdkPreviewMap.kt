@@ -43,8 +43,11 @@ fun SdkPreviewMap(
         factory = { ctx -> FrameLayout(ctx) },
         update = { container ->
             try {
-                val mgr = BaiduNaviManagerFactory.getMapManager() ?: return@update
-                val mapView = mgr.mapView ?: return@update
+                val mgr = BaiduNaviManagerFactory.getMapManager()
+                val mapView = mgr?.mapView
+                // AndroidView 的 update 参数不支持 return@update 这种标签返回
+                //（CI 报错 Unresolved label），改用 if 包住整段逻辑。
+                if (mgr != null && mapView != null) {
                 if (mapView.parent !== container) {
                     mgr.attach(container)
                     ensureRouteResultCreated(context)
@@ -82,6 +85,7 @@ fun SdkPreviewMap(
                         } catch (_: Throwable) {
                         }
                     }
+                }
                 }
             } catch (_: Throwable) {
             }
