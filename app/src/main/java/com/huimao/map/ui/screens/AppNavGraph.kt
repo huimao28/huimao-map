@@ -1009,7 +1009,14 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
                     }
                 }
             }
-            items(searchResults) { place ->
+            // performance skill（lazy-layouts §1）：lazy 列表必须给 key 与 contentType，
+            // 否则滚动复用不了组合槽位。key 用 uid（空时退化为名称+坐标，与搜索去重逻辑一致）、
+            // 不用索引或 hashCode；所有结果行同一视觉类型，contentType 统一为 "place"。
+            items(
+                searchResults,
+                key = { place -> place.uid.ifBlank { "${place.name}-${place.latLng}" } },
+                contentType = { "place" }
+            ) { place ->
                 ListItem(
                     headlineContent = { Text(place.name, fontWeight = FontWeight.Medium) },
                     supportingContent = {
