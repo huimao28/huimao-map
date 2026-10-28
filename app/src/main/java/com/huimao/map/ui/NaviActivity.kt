@@ -561,9 +561,16 @@ class NaviActivity : Activity() {
             else -> false
         }
         if (!typeOk || loc.latitude == 0.0 || loc.longitude == 0.0) return false
-        val radius = loc.radius.takeIf { it.isFinite() && it > 0f } ?: 999f
-        if (radius > 120f) return false
+        val radius = loc.radius.takeIf { it.isFinite() && it > 0f } ?: Float.MAX_VALUE
         val previous = lastPushedLocation
+        // 弱信号下定位半径经常上百米甚至几公里：之前这里半径 > 120 米就一律丢弃，
+        // 弱信号时所有定位都被丢掉，引擎收不到任何位置就回退默认北京——这就是
+        // “没进全览也直接是默认北京定位”的原因。改成：已有新鲜可靠定位时仍严格
+        // 过滤；还没有可靠定位时粗定位也先接受，粗定位总比默认北京强。
+        val hasFreshReliable = previous != null && previous.latitude != 0.0 && previous.longitude != 0.0 &&
+            lastReliableLocationAt > 0L &&
+            SystemClock.elapsedRealtime() - lastReliableLocationAt <= 10_000L
+        if (radius > 120f && hasFreshReliable) return false
         if (previous != null && previous.latitude != 0.0 && previous.longitude != 0.0) {
             val distance = FloatArray(1)
             android.location.Location.distanceBetween(
@@ -594,7 +601,13 @@ class NaviActivity : Activity() {
     }
 
     private fun pushLocationToNaviEngine(bdLoc: BDLocation) {
-        lastReliableLocationAt = SystemClock.elapsedRealtime()
+        // 可靠定位时钟只由精度合格的定位刷新：弱信号下的粗定位只更新引擎位置，
+        // 不把“可靠”窗口续上，否则后续粗定位会被误判为“已有可靠定位”而丢弃，
+        // 弱信号下位置又会断流回默认北京。
+        val radius = bdLoc.radius
+        if (radius.isFinite() && radius > 0f && radius <= 120f) {
+            lastReliableLocationAt = SystemClock.elapsedRealtime()
+        }
         lastPushedLocation = BDLocation(bdLoc)
         // Android Auto 自绘路线来自百度地图规划页（BD09LL），车辆位置也必须保持 BD09LL。
         CarNavigationBridge.update {
