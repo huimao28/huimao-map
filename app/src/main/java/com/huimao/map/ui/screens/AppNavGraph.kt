@@ -54,6 +54,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import androidx.datastore.preferences.core.edit
+import com.baidu.navisdk.adapter.BaiduNaviManagerFactory
 import com.huimao.map.data.AppSettingsKeys
 import com.huimao.map.data.dataStore
 import kotlinx.coroutines.launch
@@ -1151,6 +1152,15 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
                 if (vm.selectedDest.value?.latLng == d.latLng) {
                     vm.setRoutesFromSdk(results)
                     if (results.isNotEmpty()) selIdx = selIdx.coerceIn(0, results.size - 1)
+                    // SDK 地图画路线：边距留给底部卡片 + 实时路况 + 全览（白马同款）。
+                    try {
+                        BaiduNaviManagerFactory.getRouteResultSettingManager()?.let {
+                            it.setRouteMargin(100, 100, 100, 500)
+                            it.setRealRoadCondition(activity, true)
+                        }
+                        BaiduNaviManagerFactory.getRouteResultManager()?.fullView()
+                    } catch (_: Throwable) {
+                    }
                 }
                 vm.setPlanningState(false)
             },
@@ -1193,12 +1203,32 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad).background(MaterialTheme.colorScheme.background)) {
             if (showPlanningMap) {
-                MapPlaceholder(
-                    modifier = Modifier.fillMaxSize(),
-                    currentLocation = currentLocation,
-                    destination = dest,
-                    route = routes.getOrNull(selIdx)
-                )
+                if (routeMode == RouteMode.DRIVING) {
+                    // 白马同款：驾车预览用 SDK 自带地图（attach），路线由 SDK 自己画；
+                    // 步行/骑行/公交导航 SDK 不做，仍用自绘折线的 MapPlaceholder。
+                    SdkPreviewMap(
+                        modifier = Modifier.fillMaxSize(),
+                        currentLocation = currentLocation,
+                        routesEmpty = routes.isEmpty(),
+                        onRouteClicked = { i ->
+                            if (routes.getOrNull(i)?.routeId?.startsWith("sdk-") == true) {
+                                com.huimao.map.navigation.SdkRoutePlanner.selectRoute(i)
+                            }
+                            selIdx = i
+                            try {
+                                BaiduNaviManagerFactory.getRouteResultManager()?.fullView()
+                            } catch (_: Throwable) {
+                            }
+                        }
+                    )
+                } else {
+                    MapPlaceholder(
+                        modifier = Modifier.fillMaxSize(),
+                        currentLocation = currentLocation,
+                        destination = dest,
+                        route = routes.getOrNull(selIdx)
+                    )
+                }
             }
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
                 Surface(
@@ -1320,9 +1350,13 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
                                             selected = i == selIdx,
                                             onClick = {
                                                 selIdx = i
-                                                // SDK 算路的方案：点选即调 SDK 选路（白马地图同款）。
+                                                // SDK 算路的方案：点选即调 SDK 选路 + 全览（白马地图同款）。
                                                 if (r.routeId.startsWith("sdk-")) {
                                                     com.huimao.map.navigation.SdkRoutePlanner.selectRoute(i)
+                                                    try {
+                                                        BaiduNaviManagerFactory.getRouteResultManager()?.fullView()
+                                                    } catch (_: Throwable) {
+                                                    }
                                                 }
                                             },
                                             label = { Text((if (r.routeId.startsWith("sdk-") && r.label.isNotBlank()) "${r.label} · " else "") + "${fmtDur(r.totalDuration)} · ${fmtDist(r.totalDistance)}", style = MaterialTheme.typography.labelSmall) },
