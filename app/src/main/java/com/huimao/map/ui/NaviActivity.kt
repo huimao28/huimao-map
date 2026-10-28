@@ -656,11 +656,9 @@ class NaviActivity : Activity() {
                 // 部分手机/车机切换时 MainActivity 会给出跨国缓存点；若把它设为可靠基准，
                 // 后续真实定位会被防跳点逻辑误杀，最终导致路线规划失败。
                 naviEngineReady = true
-                if (alreadyPlanned && SdkRoutePlanner.hasPlannedRoute()) {
-                    enterPlannedGuide()
-                } else {
-                    startRoutePlanWhenLocationReady()
-                }
+                // 已规划模式也走同一套等定位逻辑：不等定位直接建诱导，
+                // 诱导界面拿不到定位 fix，就会停在全览 + “定位信号中”。
+                startRoutePlanWhenLocationReady()
                 }
             },
             onFailed = { errCode ->
@@ -671,7 +669,7 @@ class NaviActivity : Activity() {
 
     /**
      * 预览页已算好路线时的进入路径：不再自算路，直接按预览选定的方案进诱导。
-     * SDK 里没有现成路线时（如进程被回收）回落到老流程自算路。
+     * 调用前已由等定位逻辑确认 SDK 里有现成路线，无路线时走老流程自算路。
      */
     private fun enterPlannedGuide() {
         applyPreviewRouteSelection()
@@ -705,7 +703,13 @@ class NaviActivity : Activity() {
             startLng = loc.longitude
             if (freshLoc != null) pushLocationToNaviEngine(loc)
             routePlanStarted = true
-            startRoutePlan()
+            // 预览页已算好路线时，定位就绪后直接进诱导，不再自算路；
+            // SDK 里没有现成路线时（如进程被回收）回落老流程自算路。
+            if (alreadyPlanned && SdkRoutePlanner.hasPlannedRoute()) {
+                enterPlannedGuide()
+            } else {
+                startRoutePlan()
+            }
             return
         }
         if (routeLocationWaitStartedAt == 0L) routeLocationWaitStartedAt = SystemClock.elapsedRealtime()
@@ -728,7 +732,7 @@ class NaviActivity : Activity() {
                 textSize = 18f
                 gravity = android.view.Gravity.CENTER
                 setPadding(48, 48, 48, 48)
-                text = "正在获取当前位置…\n\n微信位置已接收，定位完成后将自动规划路线"
+                text = "正在获取当前位置…\n\n定位完成后将自动进入导航"
             })
         }
     }

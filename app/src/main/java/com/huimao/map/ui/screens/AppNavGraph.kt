@@ -215,7 +215,8 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
     private var searchCityHint = ""
     private var searchCityUsed = ""
     private var searchPage = 0
-    private val searchPageSize = 10
+    // 白马地图的搜索页容量就是 20 条，之前用的 10 条是自己定的。
+    private val searchPageSize = 20
 
     private val knownCities = listOf("北京", "上海", "天津", "重庆", "广州", "深圳", "长沙", "常德",
         "武汉", "成都", "杭州", "南京", "西安", "郑州", "济南", "青岛", "厦门", "福州",
@@ -949,10 +950,18 @@ fun RoutePreviewScreen(vm: NavViewModel, onBack: () -> Unit, onStartNavigation: 
     LaunchedEffect(dest, routeMode, drivingPolicy) {
         if (routeMode != RouteMode.DRIVING) return@LaunchedEffect
         val d = dest ?: return@LaunchedEffect
-        val origin = currentLocation ?: return@LaunchedEffect
-        if (origin.latitude == 0.0 || origin.longitude == 0.0) return@LaunchedEffect
+        // 定位未就绪时不要直接放弃：等一次定位（最多 15 秒，和 NaviActivity 的等定位超时一致），
+        // 否则首次进预览页时定位还没到，驾车方案会一直空白、用户只能看到“暂无方案”。
+        // 注意 currentLocation 不能放进 effect 的 key：定位每两秒更新一次，放进去会每两秒重算一次路。
         vm.setPlanningState(true)
         vm.setRoutesFromSdk(emptyList())
+        val origin = currentLocation?.takeIf { it.latitude != 0.0 && it.longitude != 0.0 }
+            ?: kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+                vm.currentLocation.first { it != null && it.latitude != 0.0 && it.longitude != 0.0 }
+            } ?: run {
+                vm.setPlanningState(false)
+                return@LaunchedEffect
+            }
         val ak = try {
             context.applicationContext.dataStore.data
                 .map { it[AppSettingsKeys.BAIDU_API_KEY] ?: "" }

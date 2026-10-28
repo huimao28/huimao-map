@@ -452,7 +452,8 @@ object BaiduMapManager {
                     PoiNearbySearchOption()
                         .keyword(keyword)
                         .location(bdLoc)
-                        .radius(5000)
+                        // 白马地图的周边默认半径就是 50000 米，之前抄参数时漏了数值只抄了字段。
+                        .radius(50000)
                         .pageNum(pageNum)
                         .pageCapacity(pageCapacity)
                         .scope(2)
