@@ -867,12 +867,31 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
     val searchCity by vm.searchCity.collectAsState()
     val locatedCity by vm.locatedCity.collectAsState()
     val searchHistory by vm.searchHistory.collectAsState()
-    var cityMenuOpen by remember { mutableStateOf(false) }
+    var showCityPicker by remember { mutableStateOf(false) }
     val effCity = searchCity.ifBlank { locatedCity.ifBlank { "全国" } }
 
     LaunchedEffect(Unit) {
         vm.loadSearchHistory()
         vm.refreshLocatedCity()
+    }
+
+    // 白马地图同款：城市不再用下拉框一个个翻，点开是按省分组的二级选择页。
+    if (showCityPicker) {
+        CityPickerScreen(
+            locatedCity = locatedCity,
+            onSelect = { city ->
+                vm.setSearchCity(city)
+                showCityPicker = false
+                if (query.length >= 2) vm.searchPlaces(query)
+            },
+            onResetToLocated = {
+                vm.setSearchCity("")
+                showCityPicker = false
+                if (query.length >= 2) vm.searchPlaces(query)
+            },
+            onBack = { showCityPicker = false }
+        )
+        return
     }
 
     // 输入变化时触发真实搜索（300ms debounce 防止快速输入并发崩溃）
@@ -920,27 +939,9 @@ fun SearchScreen(vm: NavViewModel, initialQuery: String = "", onBack: () -> Unit
                     Text("搜附近", style = MaterialTheme.typography.bodyMedium)
                 }
                 Spacer(Modifier.weight(1f))
-                Box {
-                    TextButton(onClick = { cityMenuOpen = true }) {
-                        Text(effCity)
-                        Icon(Icons.Default.ArrowDropDown, null)
-                    }
-                    DropdownMenu(
-                        expanded = cityMenuOpen,
-                        onDismissRequest = { cityMenuOpen = false }
-                    ) {
-                        (listOf("全国") + listOfNotNull(locatedCity.takeIf { it.isNotBlank() }) + vm.knownCities)
-                            .distinct().forEach { city ->
-                                DropdownMenuItem(
-                                    text = { Text(city) },
-                                    onClick = {
-                                        vm.setSearchCity(city)
-                                        cityMenuOpen = false
-                                        if (query.length >= 2) vm.searchPlaces(query)
-                                    }
-                                )
-                            }
-                    }
+                TextButton(onClick = { showCityPicker = true }) {
+                    Text(effCity)
+                    Icon(Icons.Default.ArrowDropDown, null)
                 }
             }
             LazyColumn(Modifier.weight(1f)) {
